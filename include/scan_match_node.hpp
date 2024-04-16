@@ -56,7 +56,7 @@ public:
     nav_msgs::Odometry current_odom_;
     int current_scan_index = -1;
 
-    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), laser_sub_(nh, "/turtlebot/kobuki/sensors/rplidar", 1), laser_notifier_(laser_sub_, listener_, "turtlebot/kobuki/base_footprint", 1)
+    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), laser_sub_(nh, "/turtlebot/kobuki/sensors/rplidar", 1), laser_notifier_(laser_sub_, listener_, "turtlebot/kobuki/predicted_base_footprint", 1)
     {
 
         // Initialize subscribers
@@ -93,7 +93,7 @@ private:
             sensor_msgs::PointCloud2 cloud_in;
             try
             {
-                projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_in, listener_);
+                projector_.transformLaserScanToPointCloud("turtlebot/kobuki/predicted_base_footprint", *scan, cloud_in, listener_);
 
                 // Convert to PCL format for processing
                 pcl::PointCloud<pcl::PointXYZ>::Ptr pclCloud(new pcl::PointCloud<pcl::PointXYZ>);
