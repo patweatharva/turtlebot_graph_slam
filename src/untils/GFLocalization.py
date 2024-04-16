@@ -1,4 +1,5 @@
 from .GaussianFilter import GaussianFilter
+import math
 
 class GFLocalization(GaussianFilter):
     """
@@ -64,7 +65,6 @@ class GFLocalization(GaussianFilter):
         :return xk, Pk: updated state vector and covariance matrix
         """
 
-        # TODO: To be implemented by the student
         # Get input to prediction step
         uk, Qk          = self.GetInput()
         # Prediction step
@@ -77,3 +77,19 @@ class GFLocalization(GaussianFilter):
 
         return xk, Pk
         # return xk, Pk, xk_bar, zk, Rk
+
+    def normalize_angle(angle):
+        """
+        Normalize an angle to the range between -π and π.
+
+        Args:
+            angle (float): The angle to be normalized, in radians.
+
+        Returns:
+            float: The normalized angle.
+        """
+        while angle > math.pi:
+            angle -= 2 * math.pi
+        while angle < -math.pi:
+            angle += 2 * math.pi
+        return angle

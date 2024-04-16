@@ -1,0 +1,6 @@
+devel_space: /home/leopham/Documents/8. Hands-on Localization/turtlebot_graph_slam/devel
+install: false
+install_space: /home/leopham/Documents/8. Hands-on Localization/turtlebot_graph_slam/install
+profile: default
+source_space: /home/leopham/Documents/8. Hands-on Localization/turtlebot_graph_slam/src
+workspace: /home/leopham/Documents/8. Hands-on Localization/turtlebot_graph_slam
