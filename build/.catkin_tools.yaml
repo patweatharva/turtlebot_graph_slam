@@ -1,0 +1,6 @@
+devel_space: /home/leopham/catkin_ws/src/turtlebot_graph_slam/devel
+install: false
+install_space: /home/leopham/catkin_ws/src/turtlebot_graph_slam/install
+profile: default
+source_space: /home/leopham/catkin_ws/src/turtlebot_graph_slam/src
+workspace: /home/leopham/catkin_ws/src/turtlebot_graph_slam
