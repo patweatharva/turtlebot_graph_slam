@@ -24,6 +24,9 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/extract_indices.h>
+
+#include "turtlebot_graph_slam/ResetFilter.h"
+
 #include <sstream>
 
 #include <iostream>
@@ -95,8 +98,9 @@ public:
     nav_msgs::Odometry current_odom_;
     int current_scan_index = -1;
     tf::StampedTransform current_key_frame;
+    ros::ServiceClient client_; //;
 
-    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), laser_sub_(nh, "/turtlebot/kobuki/sensors/rplidar", 1), laser_notifier_(laser_sub_, listener_, "turtlebot/kobuki/predicted_base_footprint", 1)
+    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), laser_sub_(nh, "/turtlebot/kobuki/sensors/rplidar", 1), laser_notifier_(laser_sub_, listener_, "turtlebot/kobuki/predicted_base_footprint", 1), client_(nh.serviceClient<turtlebot_graph_slam::ResetFilter>("reset_filter"))
     {
 
         // Initialize subscribers
@@ -179,17 +183,30 @@ private:
                                  transform.transform.translation.y,
                                  theta);
                     };
-
-                    // publishMatching(Transformations_vector);
                 };
-                time_trigger_ = false;
+                
+                // publishMatching(Transformations_vector);
                 last_scan_odom_ = current_odom_;
+
+                turtlebot_graph_slam::ResetFilter srv;
+                srv.request.reset_filter_requested = true;
+
+                if (client_.call(srv))
+                {
+                    ROS_INFO("Odometry Filter (EKF) is succesfully reset.... : %d", (bool)srv.response.reset_filter_response);
+                }
+                else
+                {
+                    ROS_ERROR("Failed to call reset Odometry Filter!!!!!!!");
+                };
+
+                time_trigger_ = false;
             }
             catch (tf::TransformException &e)
             {
                 ROS_ERROR("Transform error: %s", e.what());
                 return;
-            }
+            };
         }
         else
         {
