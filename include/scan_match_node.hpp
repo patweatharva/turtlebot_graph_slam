@@ -2,6 +2,7 @@
 #define SCAN_HANDLER_H
 
 #include "ros/ros.h"
+#include <ros/package.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/LaserScan.h>
 #include <nav_msgs/Odometry.h>
@@ -26,6 +27,7 @@
 #include <pcl/filters/extract_indices.h>
 
 #include "turtlebot_graph_slam/ResetFilter.h"
+
 
 #include <sstream>
 
@@ -379,7 +381,7 @@ private:
                 ROS_INFO("ICP Fitness score --- %f", meanSquaredDistance);
 
                 // Plot Transformation saving condition
-                if (current_scan_index == 1)
+                if (current_scan_index == 2)
                 {
                     savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned);
                 };
@@ -414,11 +416,12 @@ private:
         // viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, frameIdAligned);
         // std::string file_name = "/home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/pcl_viz/" + frameId + ".png";
         // viewer->saveScreenshot(file_name);
-
-        std::string directory = "/home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/pcl_viz/";
-        pcl::io::savePCDFileASCII(directory + "source.pcd", *source);
-        pcl::io::savePCDFileASCII(directory + "target.pcd", *target);
-        pcl::io::savePCDFileASCII(directory + "aligned.pcd", *aligned);
+        // Get the path to the current ROS package
+        std::string packagePath = ros::package::getPath("turtlebot_graph_slam");
+        std::string directory = "/pcl_viz/";
+        pcl::io::savePCDFileASCII(packagePath + directory + "source.pcd", *source);
+        pcl::io::savePCDFileASCII(packagePath + directory + "target.pcd", *target);
+        pcl::io::savePCDFileASCII(packagePath + directory + "aligned.pcd", *aligned);
     };
 
     void registerPointcloudinWorld(const pcl::PointCloud<pcl::PointXYZ>::Ptr &currentScan)
@@ -444,7 +447,7 @@ private:
         };
 
         Twtok = Twtokplus1;
-        
+
         // Publish the whole point cloud
         publishWorldPointcloud();
 
