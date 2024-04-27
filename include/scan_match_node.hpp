@@ -28,7 +28,6 @@
 
 #include "turtlebot_graph_slam/ResetFilter.h"
 
-
 #include <sstream>
 
 #include <iostream>
@@ -230,7 +229,11 @@ private:
 
                 // publishMatching(Transformations_vector);
 
-                registerPointcloudinWorld(planarPointcloud);
+                // TODO: Registrations conditions
+                if ( true ||current_scan_index == 0 || current_scan_index == 1 || current_scan_index ==2 || current_scan_index ==3)
+                {
+                    registerPointcloudinWorld(planarPointcloud);
+                }
 
                 time_trigger_ = false;
             }
@@ -381,7 +384,7 @@ private:
                 ROS_INFO("ICP Fitness score --- %f", meanSquaredDistance);
 
                 // Plot Transformation saving condition
-                if (current_scan_index == 2)
+                if (current_scan_index == 1)
                 {
                     savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned);
                 };
@@ -403,19 +406,6 @@ private:
 
     void savePointcloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &source, const pcl::PointCloud<pcl::PointXYZ>::Ptr &target, const pcl::PointCloud<pcl::PointXYZ>::Ptr &aligned)
     {
-        // pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
-        // viewer->setBackgroundColor(0, 0, 0);
-        // std::string frameId = "Current_Frame_ID-" + std::to_string(current_scan_index);
-        // std::string frameIdAligned = "Current_Frame_ID-" + std::to_string(current_scan_index) + "_Aligned";
-        // std::string targetId = "Target_Frame_ID-" + std::to_string(current_scan_index - 1);
-        // viewer->addPointCloud<pcl::PointXYZ>(target, targetId);
-        // viewer->addPointCloud<pcl::PointXYZ>(source, frameId);
-        // viewer->addPointCloud<pcl::PointXYZ>(aligned, frameIdAligned);
-        // viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, targetId);
-        // viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, frameId);
-        // viewer->setPointCloudRenderingProperties(pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, frameIdAligned);
-        // std::string file_name = "/home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/pcl_viz/" + frameId + ".png";
-        // viewer->saveScreenshot(file_name);
         // Get the path to the current ROS package
         std::string packagePath = ros::package::getPath("turtlebot_graph_slam");
         std::string directory = "/pcl_viz/";
@@ -426,7 +416,16 @@ private:
 
     void registerPointcloudinWorld(const pcl::PointCloud<pcl::PointXYZ>::Ptr &currentScan)
     {
+
+        // std::cout << "T w to k for scan ID "<<current_scan_index<< ":\n"
+        //           << Twtok << std::endl;
+        // std::cout << "T k to k+1 for scan ID "<<current_scan_index<< ":\n"
+        //           << Tktokplus1 << std::endl;
+
         Eigen::Matrix4f Twtokplus1 = Twtok * Tktokplus1;
+
+        // std::cout << "T w to k+1 for scan ID "<<current_scan_index<< ":\n"
+        //           << Twtokplus1 << std::endl;
 
         // Transform currentScan to world_ned
         pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud_world(new pcl::PointCloud<pcl::PointXYZ>);
@@ -443,14 +442,13 @@ private:
         else
         {
 
-            world_map_+=(*transformed_cloud_world);
+            world_map_ += (*transformed_cloud_world);
         };
 
         Twtok = Twtokplus1;
 
         // Publish the whole point cloud
         publishWorldPointcloud();
-
     };
 
     void publishWorldPointcloud()
