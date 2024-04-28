@@ -237,7 +237,7 @@ private:
                 // publishMatching(Transformations_vector);
 
                 // TODO: Registrations conditions
-                if (false || current_scan_index == 0 || current_scan_index == 1 || current_scan_index == 2 || current_scan_index == 3)
+                if (true || current_scan_index == 0 || current_scan_index == 1 || current_scan_index == 2 || current_scan_index == 3)
                 {
                     registerPointcloudinWorld(planarPointcloud);
                 }
@@ -424,23 +424,23 @@ private:
     void registerPointcloudinWorld(const pcl::PointCloud<pcl::PointXYZ>::Ptr &currentScan)
     {
 
-        std::cout << "T w to k for scan ID " << current_scan_index << ":\n"
-                  << Twtok << std::endl;
-        std::cout << "T k to k+1 for scan ID " << current_scan_index << ":\n"
-                  << Tktokplus1 << std::endl;
+        // std::cout << "T w to k for scan ID " << current_scan_index << ":\n"
+        //           << Twtok << std::endl;
+        // std::cout << "T k to k+1 for scan ID " << current_scan_index << ":\n"
+        //           << Tktokplus1 << std::endl;
 
         Twtokplus1 = Twtok * Tktokplus1;
 
         keyframes_.push_back(Twtokplus1);
 
-        std::cout << "T w to k+1 for scan ID " << current_scan_index << ":\n"
-                  << Twtokplus1 << std::endl;
+        // std::cout << "T w to k+1 for scan ID " << current_scan_index << ":\n"
+        //           << Twtokplus1 << std::endl;
 
         publishKeyframeinMap();
 
         // Transform currentScan to map frame
         pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud_world(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::transformPointCloud(*currentScan, *transformed_cloud_world, Twtokplus1);
+        pcl::transformPointCloud(*currentScan, *transformed_cloud_world, Tktokplus1);
 
         // Store it in map_storedPointClouds_
         storeWorldPointCloud(transformed_cloud_world);
