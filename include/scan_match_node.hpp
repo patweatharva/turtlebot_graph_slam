@@ -159,7 +159,7 @@ private:
 
                 // Saving the current key frame of the robot
                 std::string targetFrame = "turtlebot/kobuki/predicted_base_footprint";
-                std::string sourceFrame = "world_ned";
+                std::string sourceFrame = "map";
                 ros::Time scanTime = scan->header.stamp;
 
                 // Wait for the transformation to become available
@@ -457,7 +457,7 @@ private:
 
         pcl::toROSMsg(world_map_, world_cloud_out);
 
-        world_cloud_out.header.frame_id = "world_ned";
+        world_cloud_out.header.frame_id = "map";
         world_cloud_out.header.stamp = ros::Time::now();
 
         // Publish the point cloud
