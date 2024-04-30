@@ -140,6 +140,9 @@ public:
     void storeWorldPointCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
     {
         map_storedPointClouds_.push_back(cloud);
+        std::string packagePath = ros::package::getPath("turtlebot_graph_slam");
+        std::string directory = "/pcl_viz/";
+        pcl::io::savePCDFileASCII(packagePath + directory + "world_map.pcd", *cloud);
     };
 
 private:
