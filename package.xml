@@ -50,6 +50,7 @@
     <!-- <depend>libpcl-all-dev</depend> -->
     <!-- <depend>libpcl-all</depend> -->
     <depend>laser_geometry</depend>
+    <depend>gtsam</depend>
     <!-- <exec_depend>laser_geometry</exec_depend> -->
     <!-- <exec_depend>libpcl-all</exec_depend> -->
 

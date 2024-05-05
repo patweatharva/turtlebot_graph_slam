@@ -5,6 +5,7 @@
 #include <ros/package.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/LaserScan.h>
+#include <std_msgs/Float64MultiArray.h>
 #include <nav_msgs/Odometry.h>
 #include <laser_geometry/laser_geometry.h>
 #include <pcl/point_cloud.h>
@@ -29,6 +30,7 @@
 #include <geometry_msgs/PoseArray.h>
 
 #include "turtlebot_graph_slam/ResetFilter.h"
+#include "turtlebot_graph_slam/tfArray.h"
 
 #include <sstream>
 
@@ -54,7 +56,7 @@ Eigen::Matrix4f TFtoSE3<geometry_msgs::TransformStamped>(const geometry_msgs::Tr
     transformation.block<3, 3>(0, 0) = quaternion.toRotationMatrix();
     transformation.block<3, 1>(0, 3) = translation;
 
-    Eigen::Matrix4f transformation_inverse = transformation.inverse();
+    Eigen::Matrix4f transformation_inverse = transformation;
 
     return (transformation_inverse);
 }
@@ -84,6 +86,7 @@ public:
     ros::NodeHandle &nh_;
     ros::Publisher pointcloud_pub_ = this->nh_.advertise<sensor_msgs::PointCloud2>("/pc", 10);
     ros::Publisher keyframe_pub_ = this->nh_.advertise<geometry_msgs::PoseArray>("/keyframes", 10);
+    ros::Publisher scan_match_pub_ = this->nh_.advertise<turtlebot_graph_slam::tfArray>("/scanmatches", 10);
 
     // Laser Geometry Projection for converting scan to PointCloud
     laser_geometry::LaserProjection projector_;
@@ -94,7 +97,7 @@ public:
     message_filters::Subscriber<sensor_msgs::LaserScan> laser_sub_;
     tf::MessageFilter<sensor_msgs::LaserScan> laser_notifier_;
 
-    tf::TransformBroadcaster keyframe_br_;
+    // tf::TransformBroadcaster keyframe_br_;
 
     double thresholdTime_;
     double thresholdOdometry_;
@@ -106,8 +109,8 @@ public:
     ros::Time lastScanTime_;
     nav_msgs::Odometry last_scan_odom_;
     nav_msgs::Odometry current_odom_;
-    int current_scan_index = -1;
-    tf::StampedTransform current_key_frame;
+    int current_scan_index = -1; // Frame -1 means map frame
+    geometry_msgs::TransformStamped current_key_frame;
     ros::ServiceClient client_;
 
     Eigen::Matrix4f Twtok = Eigen::Matrix4f::Identity();
@@ -129,7 +132,7 @@ public:
         lastScanTime_ = ros::Time::now();
     };
 
-    void storePointCloudandKeyframe(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const tf::StampedTransform &keyframe)
+    void storePointCloudandKeyframe(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const geometry_msgs::TransformStamped &keyframe)
     {
         // std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>> cloudPtr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>(*cloud);
         // storedPointClouds_.push_back(cloudPtr);
@@ -150,10 +153,13 @@ private:
     // std::vector<pcl::PointCloud<pcl::PointXYZ>> storedPointClouds_;   // For directly storing pointclouds
     std::vector<boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>> storedPointClouds_;
     std::vector<boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>> map_storedPointClouds_;
-    std::vector<tf::StampedTransform> storedKeyframes_;
+    std::vector<geometry_msgs::TransformStamped> storedKeyframes_;
     std::vector<boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ>>> hypothesis_;
+    std::vector<int> hypothesisIDs_;
     pcl::PointCloud<pcl::PointXYZ> world_map_;
     std::vector<Eigen::Matrix4f> keyframes_;
+    std::vector<geometry_msgs::TransformStamped> Transformations_vector_;
+    std::vector<std::vector<double>> covariances_;
     // void publishMatching(const std::pair<double, double> &transformations, const std::vector<int> &matching_ids);
 
     // Scan Callback method
@@ -168,6 +174,8 @@ private:
                 projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_in, listener_);
 
                 last_scan_odom_ = current_odom_;
+                last_scan_odom_.header.frame_id = std::to_string(current_scan_index);
+                last_scan_odom_.child_frame_id = std::to_string(current_scan_index+1);
                 odomtoTF(last_scan_odom_, current_key_frame);
 
                 turtlebot_graph_slam::ResetFilter srv;
@@ -186,7 +194,6 @@ private:
 
                 std::cout << "Current Key Frame:\n"
                           << current_tf << std::endl;
-
 
                 // Convert to PCL format for processing
                 pcl::PointCloud<pcl::PointXYZ>::Ptr pclCloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -207,10 +214,10 @@ private:
                 {
                     // Hypothesis generation and matching
                     pclMatchHypothesis();
-                    std::vector<geometry_msgs::TransformStamped> Transformations_vector = pointCloudMatching(planarPointcloud);
+                    Transformations_vector_ = pointCloudMatching(planarPointcloud);
                     ROS_INFO("---Factors for Pointcloud (ID - %d) Calculated---", current_scan_index);
                     // ROS_INFO("SIZE of the transformations_vector -- %zu ", Transformations_vector.size());
-                    for (const auto &transform : Transformations_vector)
+                    for (const auto &transform : Transformations_vector_)
                     {
                         double theta = tf::getYaw(transform.transform.rotation);
                         ROS_INFO("Transformation : (%f,%f,%f)",
@@ -228,7 +235,7 @@ private:
 
                 ROS_INFO_STREAM(" Scan Processing Runtime: " << scan_processing_time.toSec());
 
-                // publishMatching(Transformations_vector);
+                publishMatching(Transformations_vector_, covariances_);
 
                 // TODO: Registrations conditions
                 if (true || current_scan_index == 0 || current_scan_index == 1 || current_scan_index == 2 || current_scan_index == 3)
@@ -315,7 +322,10 @@ private:
     void pclMatchHypothesis()
     {
         hypothesis_.clear();
+        hypothesisIDs_.clear();
+
         hypothesis_.push_back(storedPointClouds_[storedPointClouds_.size() - 2]);
+        hypothesisIDs_.push_back(storedPointClouds_.size() - 2);
     };
 
     geometry_msgs::TransformStamped SE3toTF(const Eigen::Matrix4f &transformation, const std::string &frame_id, const std::string &child_frame_id)
@@ -347,26 +357,30 @@ private:
         return transformStamped;
     };
 
-    void odomtoTF(const nav_msgs::Odometry &odom_in, tf::StampedTransform &tf_out)
+    void odomtoTF(const nav_msgs::Odometry &odom_in, geometry_msgs::TransformStamped &tf_out)
     {
-        // Extract position and orientation from the odometry message
-        geometry_msgs::Pose pose = odom_in.pose.pose;
-        tf::Quaternion q(pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w);
-        tf::Vector3 t(pose.position.x, pose.position.y, pose.position.z);
+        // Extract position and orientation from the Odometry message
+        tf_out.header.stamp = odom_in.header.stamp;
+        tf_out.header.frame_id = std::to_string(current_scan_index); // Parent frame
+        tf_out.child_frame_id = std::to_string(current_scan_index+1);   // Child frame
 
-        // Create tf::Transform
-        tf::Transform transform(q, t);
+        // Position (translation)
+        tf_out.transform.translation.x = odom_in.pose.pose.position.x;
+        tf_out.transform.translation.y = odom_in.pose.pose.position.y;
+        tf_out.transform.translation.z = odom_in.pose.pose.position.z;
 
-        // Invert the transform
-        tf::Transform inverseTransform = transform.inverse();
-
-        // Assign the inverted transform to tf_out
-        tf_out = tf::StampedTransform(inverseTransform, odom_in.header.stamp, odom_in.header.frame_id, odom_in.child_frame_id);
+        // Orientation (rotation)
+        tf_out.transform.rotation.x = odom_in.pose.pose.orientation.x;
+        tf_out.transform.rotation.y = odom_in.pose.pose.orientation.y;
+        tf_out.transform.rotation.z = odom_in.pose.pose.orientation.z;
+        tf_out.transform.rotation.w = odom_in.pose.pose.orientation.w;
     }
 
     std::vector<geometry_msgs::TransformStamped> pointCloudMatching(const pcl::PointCloud<pcl::PointXYZ>::Ptr &currentScan)
     {
         std::vector<geometry_msgs::TransformStamped> transformations;
+        Eigen::Matrix4f finalTF = Eigen::Matrix4f::Identity();
+        geometry_msgs::TransformStamped tfs;
 
         for (size_t i = 0; i < hypothesis_.size(); ++i)
         {
@@ -387,7 +401,7 @@ private:
             icp.setEuclideanFitnessEpsilon(0.05);
 
             // Eigen::Matrix4f initial_guess = Eigen::Matrix4f::Identity();
-            Eigen::Matrix4f initial_guess = TFtoSE3(current_key_frame);
+            Eigen::Matrix4f initial_guess = TFtoSE3(current_key_frame); // TODO: Make a new function to get the initial guess
 
             std::cout << "Initial guess matrix:\n"
                       << initial_guess << std::endl;
@@ -399,7 +413,14 @@ private:
             icp.align(*cloud_source_aligned, initial_guess);
 
             // Obtain the final transformation matrix
-            Tktokplus1 = icp.getFinalTransformation();
+            if (hypothesisIDs_[i] == (current_scan_index - 1))
+            {
+                Tktokplus1 = icp.getFinalTransformation();
+            }
+            else
+            {
+                finalTF = icp.getFinalTransformation();
+            }
 
             if (icp.hasConverged())
             {
@@ -415,10 +436,16 @@ private:
                 if (meanSquaredDistance <= 2.0)
                 {
                     // Create a TransformStamped message
-                    std::string frameID = "jk";
-                    std::string childID = "kj";
-                    geometry_msgs::TransformStamped tfs = SE3toTF(Tktokplus1, frameID, childID);
-
+                    std::string frameID = std::to_string(current_scan_index);
+                    std::string childID = std::to_string(hypothesisIDs_[i]);
+                    if (hypothesisIDs_[i] == (current_scan_index - 1))
+                    {
+                        tfs = SE3toTF(Tktokplus1, frameID, childID);
+                    }
+                    else
+                    {
+                        tfs = SE3toTF(finalTF, frameID, childID);
+                    }
                     // Add the transformation to the vector
                     transformations.push_back(tfs);
                 };
@@ -522,6 +549,25 @@ private:
         }
 
         keyframe_pub_.publish(poseArray);
+    }
+
+    void publishMatching(const std::vector<geometry_msgs::TransformStamped> &transforms, const std::vector<std::vector<double>> &covariances)
+    {
+        turtlebot_graph_slam::tfArray tfArray_msg;
+        tfArray_msg.transforms.assign(transforms.begin(), transforms.end());
+
+        // std::vector<std::shared_ptr<std_msgs::Float64MultiArray>> covarianceMessages;
+
+        // for (const auto& cov : covariances){
+        //     std_msgs::Float64MultiArray covarianceMsg;
+        //     covarianceMsg.data.assign(cov.begin(), cov.end());
+        //     covarianceMessages.push_back(std::make_shared<std_msgs::Float64MultiArray>(covarianceMsg));
+        // }
+        // tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
+
+        tfArray_msg.keyframe = last_scan_odom_;
+
+        scan_match_pub_.publish(tfArray_msg);
     }
 };
 

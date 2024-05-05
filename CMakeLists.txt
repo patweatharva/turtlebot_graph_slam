@@ -30,7 +30,11 @@ find_package(catkin REQUIRED COMPONENTS
 
 find_package(PCL REQUIRED)
 
+# Include GTSAM CMake tools
 find_package(GTSAMCMakeTools)
+#include(GtsamBuildTypes) # Load build type flags and default to Debug mode
+#include(GtsamTesting)    # Easy functions for creating unit tests and scripts
+#include(GtsamMatlabWrap) # Automatic MATLAB wrapper generation
 find_package(GTSAM REQUIRED)
 
 find_package(Eigen3 REQUIRED)
@@ -69,11 +73,10 @@ find_package(Boost REQUIRED COMPONENTS system)
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES 
+  tfArray.msg
+)
 
 # Generate services in the 'srv' folder
 add_service_files(
@@ -92,6 +95,8 @@ add_service_files(
 generate_messages(
   DEPENDENCIES
   std_msgs  # Or other packages containing msgs
+  geometry_msgs
+  nav_msgs
 )
 
 ################################################
@@ -131,6 +136,7 @@ catkin_package(
     std_msgs
     sensor_msgs
     pcl_ros
+    message_runtime
 #  INCLUDE_DIRS include
 #  LIBRARIES turtlebot_graph_slam
 #  CATKIN_DEPENDS other_catkin_pkg
@@ -152,6 +158,7 @@ ${EIGEN3_INCLUDE_DIRS}
 ${Boost_INCLUDE_DIRS}
 /usr/include/pcl-1.10/
 /usr/include/eigen3/
+/usr/local/include
 )
 
 # link_directories(${PCL_LIBRARY_DIRS})
@@ -170,7 +177,7 @@ ${Boost_INCLUDE_DIRS}
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-add_executable(turtlebot_graph_slam_node src/graph_slam_node.cpp)
+add_executable(graph_slam_node src/graph_slam_node.cpp)
 add_executable(scan_match_node src/scan_match_node.cpp)
 
 ## Rename C++ executable without prefix
@@ -184,17 +191,19 @@ add_executable(scan_match_node src/scan_match_node.cpp)
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(turtlebot_graph_slam_node
+target_link_libraries(graph_slam_node
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
   ${Boost_LIBRARIES}
   ${GTSAM_LIBRARIES}
+  gtsam
 )
 target_link_libraries(scan_match_node
   ${catkin_LIBRARIES}
   ${PCL_LIBRARIES}
   ${Boost_LIBRARIES}
   ${GTSAM_LIBRARIES}
+  gtsam
 )
 
 #############
@@ -213,7 +222,7 @@ target_link_libraries(scan_match_node
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
-install(TARGETS turtlebot_graph_slam_node scan_match_node
+install(TARGETS graph_slam_node scan_match_node
         RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 

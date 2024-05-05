@@ -1,6 +1,0 @@
-devel_space: /home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/devel
-install: false
-install_space: /home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/install
-profile: default
-source_space: /home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/src
-workspace: /home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam
