@@ -1,6 +1,6 @@
 graphSLAM:
  ISAM2:
-    Use_ISAM2: true
+    Use_ISAM2: false
     params:
       relinearizeThreshold: 0.01
       relinearizeSkip: 1

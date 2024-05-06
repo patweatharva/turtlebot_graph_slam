@@ -76,6 +76,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 add_message_files(
   FILES 
   tfArray.msg
+  keyframe.msg
 )
 
 # Generate services in the 'srv' folder
