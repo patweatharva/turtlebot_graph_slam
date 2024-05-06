@@ -436,8 +436,8 @@ private:
                 if (meanSquaredDistance <= 2.0)
                 {
                     // Create a TransformStamped message
-                    std::string frameID = std::to_string(current_scan_index);
-                    std::string childID = std::to_string(hypothesisIDs_[i]);
+                    std::string frameID = std::to_string(hypothesisIDs_[i]);
+                    std::string childID = std::to_string(current_scan_index);
                     if (hypothesisIDs_[i] == (current_scan_index - 1))
                     {
                         tfs = SE3toTF(Tktokplus1, frameID, childID);

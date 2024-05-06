@@ -33,6 +33,7 @@
 
 #include <vector>
 #include <iostream>
+#include <string>
 #include <memory>
 
 using namespace std;
@@ -56,17 +57,20 @@ private:
     nav_msgs::Odometry initial_Odom_;
     nav_msgs::Odometry current_odom_;
 
+    Pose2 current_pose_;
+
 protected:
     ros::NodeHandle nh_;
     ros::Subscriber scan_match_sub_, odom_sub_;
 
 public:
-    int index_ = -1;
+    int index_ = 0;
 
     bool initialValues_added_ = false;
     bool optimizer_initialised_ = false;
     bool graph_initialised_ = false;
     bool isam2InUse_;
+    int current_scan_index_ = -1;
 
     graph_slam_handler(ros::NodeHandle &nh);
     ~graph_slam_handler();
@@ -81,7 +85,7 @@ public:
 
 graph_slam_handler::graph_slam_handler(ros::NodeHandle &nh) : nh_(nh)
 {
-    // scan_match_sub_ = nh.subscribe("/scanmatches", 10, &graph_slam_handler::scanCB, this);
+    scan_match_sub_ = nh.subscribe("/scanmatches", 10, &graph_slam_handler::scanCB, this);
     odom_sub_ = nh.subscribe("/odom", 1, &graph_slam_handler::odomCB, this);
 
     initGraph();
@@ -99,7 +103,7 @@ void graph_slam_handler::initGraph()
     {
         graph_ = std::make_unique<NonlinearFactorGraph>();
         ROS_INFO_STREAM("Nonlinear Factor Graph Initialized!!");
-        graph_initialised_ = true; 
+        graph_initialised_ = true;
     }
 }
 
@@ -242,39 +246,89 @@ void graph_slam_handler::addInitialValuestoGraph()
                      initial_Odom_.pose.pose.orientation.z,
                      initial_Odom_.pose.pose.orientation.w);
 
-    Pose2 prior_pose(x, y, tf::getYaw(q));
-    std::cout << " Prior pose  " << prior_pose << std::endl;
+    current_pose_ = Pose2(x, y, tf::getYaw(q));
 
-    Eigen::Matrix3d prior_noise_model;
+    // Pose2 prior_pose(x, y, tf::getYaw(q));
+    std::cout << " Prior pose  " << current_pose_ << std::endl;
+
+    gtsam::Matrix33 prior_noise_model;
     prior_noise_model << initial_Odom_.pose.covariance[0], initial_Odom_.pose.covariance[1], initial_Odom_.pose.covariance[5],
         initial_Odom_.pose.covariance[6], initial_Odom_.pose.covariance[7], initial_Odom_.pose.covariance[11],
         initial_Odom_.pose.covariance[30], initial_Odom_.pose.covariance[31], initial_Odom_.pose.covariance[35];
 
-    initial_estimates_.insert(X(index_), prior_pose);
+    initial_estimates_.insert(X(index_), current_pose_);
 
-    graph_->addPrior(X(index_), prior_pose, prior_noise_model);
+    graph_->addPrior(X(index_), current_pose_, prior_noise_model);
 
     std::cout << " Prior noise model " << prior_noise_model << std::endl;
 }
 
 void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &scan_msg)
 {
+    tf::Quaternion qu(initial_Odom_.pose.pose.orientation.x,
+                      initial_Odom_.pose.pose.orientation.y,
+                      initial_Odom_.pose.pose.orientation.z,
+                      initial_Odom_.pose.pose.orientation.w);
+
+    Pose2 odometry(scan_msg->keyframe.pose.pose.position.x, scan_msg->keyframe.pose.pose.position.y, tf::getYaw(qu));
+
+    gtsam::Matrix33 odom_cov;
+    odom_cov << scan_msg->keyframe.pose.covariance[0], scan_msg->keyframe.pose.covariance[1], scan_msg->keyframe.pose.covariance[5],
+        scan_msg->keyframe.pose.covariance[6], scan_msg->keyframe.pose.covariance[7], scan_msg->keyframe.pose.covariance[11],
+        scan_msg->keyframe.pose.covariance[30], scan_msg->keyframe.pose.covariance[31], scan_msg->keyframe.pose.covariance[35];
+
+    try
+    {
+        current_scan_index_ = std::stoi(scan_msg->keyframe.child_frame_id);
+        // std::cout << "Current scan Indexxxxxxxxxxxx: " << current_scan_index_ << std::endl;
+    }
+    catch (std::invalid_argument const &e)
+    {
+        ROS_ERROR("Error converting child_frame_id to integer: %s", e.what());
+    }
+    catch (std::out_of_range const &e)
+    {
+        ROS_ERROR("Error converting child_frame_id to integer: %s", e.what());
+    }
+
     if (graph_.get() != nullptr && optimizer_initialised_ && initialValues_added_ && graph_initialised_)
     {
+        index_++;
+        // std::cout << "HEHEHEHEHEHE" << std::endl;
         if (scan_msg->transforms.empty())
         {
-            index_++;
-            if ((index_) == 0) // Initial frame (0th frame)
-            {
-                
-            }
-            else // No good matching found
-            {
+            // add odometry Factor between X(index_-1) to X(index_) to graph
+            graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
 
-            }
+            current_pose_.compose(odometry);
+
+            // add initial estimates for X(1) from odometry
+            initial_estimates_.insert(X(index_), current_pose_);
         }
-        else
+        else // there are scan matches
         {
+            for (int i = 0; i < scan_msg->transforms.size(); i++)
+            {
+                // extract pose2 from the geometry_msgs/transformedStamped
+                tf::Quaternion qt(scan_msg->transforms[i].transform.rotation.x, scan_msg->transforms[i].transform.rotation.y, scan_msg->transforms[i].transform.rotation.z, scan_msg->transforms[i].transform.rotation.w);
+                Pose2 scan_pose(scan_msg->transforms[i].transform.translation.x, scan_msg->transforms[i].transform.translation.y, tf::getYaw(qt));
+
+                // extract covariance from the covariances
+                Matrix33 scan_cov;
+
+                // add initial estimates composing logic
+
+                // add scan factor to the graph
+
+                // add odom factor to the graph
+                graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
+
+                // Solve and reset graph
+
+                // update current pose
+
+                // publish graph results
+            }
         }
     }
 }
