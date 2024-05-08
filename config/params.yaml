@@ -1,14 +1,14 @@
 graphSLAM:
  ISAM2:
-    Use_ISAM2: false
+    Use_ISAM2: true
     params:
-      relinearizeThreshold: 0.01
-      relinearizeSkip: 1
+      relinearizeThreshold: 0.1
+      relinearizeSkip: 10
       factorization: "CHOLESKY"
  LevenbergMarquardt:
     params:
       initialLambda: 0.00001
-      lambdaFactor: 2.0
+      lambdaFactor: 5.0
       lambdaUpperBound: 100000
       lambdaLowerBound: 0.00001
       minModelFidelity: 0.001

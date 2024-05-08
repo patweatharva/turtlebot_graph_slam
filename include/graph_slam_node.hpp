@@ -269,10 +269,10 @@ void graph_slam_handler::addInitialValuestoGraph()
 
 void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &scan_msg)
 {
-    tf::Quaternion qu(initial_Odom_.pose.pose.orientation.x,
-                      initial_Odom_.pose.pose.orientation.y,
-                      initial_Odom_.pose.pose.orientation.z,
-                      initial_Odom_.pose.pose.orientation.w);
+    tf::Quaternion qu(scan_msg->keyframe.pose.pose.orientation.x,
+                      scan_msg->keyframe.pose.pose.orientation.y,
+                      scan_msg->keyframe.pose.pose.orientation.z,
+                      scan_msg->keyframe.pose.pose.orientation.w);
 
     Pose2 odometry(scan_msg->keyframe.pose.pose.position.x, scan_msg->keyframe.pose.pose.position.y, tf::getYaw(qu));
 
@@ -297,26 +297,13 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
 
     if (graph_.get() != nullptr && optimizer_initialised_ && initialValues_added_ && graph_initialised_)
     {
-        if (scan_msg->transforms.empty())
-        {
-            current_pose_ = current_pose_.compose(odometry);
-
-            // add initial estimates for X(1) from odometry
-            initial_estimates_.insert(X(index_), current_pose_);
-
-            // add odometry Factor between X(index_-1) to X(index_) to graph
-            graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
-        }
-        else // there are scan matches
+        if (!scan_msg->transforms.empty())
         {
             for (int i = 0; i < scan_msg->transforms.size(); i++)
             {
                 // extract pose2 from the geometry_msgs/transformedStamped
                 tf::Quaternion qt(scan_msg->transforms[i].transform.rotation.x, scan_msg->transforms[i].transform.rotation.y, scan_msg->transforms[i].transform.rotation.z, scan_msg->transforms[i].transform.rotation.w);
                 Pose2 scan_pose(scan_msg->transforms[i].transform.translation.x, scan_msg->transforms[i].transform.translation.y, tf::getYaw(qt));
-
-                // extract covariance from the covariances
-                Matrix33 scan_cov; // TODO: Read covariance from the msg
 
                 std::cout << "odometry pose - " << odometry << "  scan pose  " << scan_pose << std::endl;
 
@@ -332,18 +319,40 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
                 }
 
-                // add scan factor to the graph
-                auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.07, 0.071, 0.03));
-
-                // graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), scan_pose, noiseModel::Diagonal::Covariance(scan_cov));
-                graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(scan_match_with_frame), X(index_), scan_pose, icp_noise_model);
+                // Add scan matching factor
+                if (scan_msg->covariances.empty())
+                {
+                    auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.07, 0.07, 0.08));
+                    graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(scan_match_with_frame), X(index_), scan_pose, icp_noise_model);
+                }
+                else
+                {
+                    Matrix33 scan_cov; // TODO: Read covariance from the msg
+                    graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), scan_pose, noiseModel::Diagonal::Covariance(scan_cov));
+                }
             }
         }
-        solveAndResetGraph();
+        else // there are no scan matches
+        {
+            current_pose_ = current_pose_.compose(odometry);
+
+            ROS_INFO_STREAM("FIOEROIEWKLEWVNOIEWVNOIWENVOIWEIEONVOWIEVNOWEVIWN");
+
+            // add initial estimates for X(1) from odometry
+            initial_estimates_.insert(X(index_), current_pose_);
+
+            // add odometry Factor between X(index_-1) to X(index_) to graph
+            graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
+        }
+        
+        if (index_ > 1)
+        {  
+            solveAndResetGraph();
+        }
 
         if (!results_.empty())
         {
-            Marginals marg(*graph_, results_);
+            // Marginals marg(*graph_, results_);
 
             // update current pose
             current_pose_ = results_.at<Pose2>(X(index_));
@@ -351,7 +360,7 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
             for (int i = 0; i < results_.size(); i++)
             {
                 ROS_INFO_STREAM("Keyframe number " << i << " Pose: - " << results_.at<Pose2>(X(i)));
-                ROS_INFO_STREAM("Keyframe number " << i << " Covariance: - " << marg.marginalCovariance(X(i)));
+                // ROS_INFO_STREAM("Keyframe number " << i << " Covariance: - \n" << marg.marginalCovariance(X(i)));
             }
 
             // publish graph results
@@ -365,7 +374,6 @@ void graph_slam_handler::solveAndResetGraph()
     if (isam2InUse_)
     {
         ROS_INFO_STREAM("Optimizing the graph using ISAM2!");
-
         isam2_->update(*graph_, initial_estimates_);
         results_ = isam2_->calculateEstimate();
 
@@ -385,7 +393,7 @@ void graph_slam_handler::solveAndResetGraph()
 void graph_slam_handler::publishResults()
 {
     turtlebot_graph_slam::keyframe keyframe_msg;
-    std::vector<std_msgs::Float64MultiArray> covarianceMessages;
+    // std::vector<std_msgs::Float64MultiArray> covarianceMessages;
 
     // Extract and publish optimized poses
     for (int i = 1; i < results_.size(); i++)
@@ -398,24 +406,24 @@ void graph_slam_handler::publishResults()
         keyframe_msg.keyframePoses.poses.push_back(pose_stamped);
 
         // If ISAM2 is not in use, add covariances
-        if (!isam2InUse_)
-        {
-            Marginals marg(*graph_, results_);
-            Matrix cov = marg.marginalCovariance(X(i));
-            vector<double> covariance_vec(9);
-            std_msgs::Float64MultiArray covarianceMsg;
-            for (int j = 0; j < 3; j++)
-            {
-                for (int k = 0; k < 3; k++)
-                {
-                    covariance_vec[j * 3 + k] = cov(j, k);
-                }
-            }
-            covarianceMsg.data.assign(covariance_vec.begin(), covariance_vec.end());
-            covarianceMessages.push_back(covarianceMsg);
-        }
+        // if (!isam2InUse_)
+        // {
+        //     Marginals marg(*graph_, results_);
+        //     Matrix cov = marg.marginalCovariance(X(i));
+        //     vector<double> covariance_vec(9);
+        //     std_msgs::Float64MultiArray covarianceMsg;
+        //     for (int j = 0; j < 3; j++)
+        //     {
+        //         for (int k = 0; k < 3; k++)
+        //         {
+        //             covariance_vec[j * 3 + k] = cov(j, k);
+        //         }
+        //     }
+        //     covarianceMsg.data.assign(covariance_vec.begin(), covariance_vec.end());
+        //     covarianceMessages.push_back(covarianceMsg);
+        // }
     }
-    keyframe_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
+    // keyframe_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
     optimized_pose_pub_.publish(keyframe_msg);
 }
 

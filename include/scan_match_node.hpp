@@ -1,6 +1,8 @@
 #ifndef SCAN_HANDLER_H
 #define SCAN_HANDLER_H
 
+#include <cmath>
+
 #include "ros/ros.h"
 #include <ros/package.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -28,9 +30,11 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/extract_indices.h>
 #include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/Pose.h>
 
 #include "turtlebot_graph_slam/ResetFilter.h"
 #include "turtlebot_graph_slam/tfArray.h"
+#include "turtlebot_graph_slam/keyframe.h"
 
 #include <sstream>
 
@@ -80,6 +84,25 @@ Eigen::Matrix4f TFtoSE3<tf::StampedTransform>(const tf::StampedTransform &stampe
     return (transformation_inverse);
 }
 
+Eigen::Matrix4f posetoSE3(const geometry_msgs::Pose &pose)
+{
+    Eigen::Matrix4f se3 = Eigen::Matrix4f::Identity();
+
+    // Translation
+    se3(0, 3) = pose.position.x;
+    se3(1, 3) = pose.position.y;
+    se3(2, 3) = pose.position.z;
+
+    // Quaternion to rotation matrix
+    Eigen::Quaternionf quat(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
+    Eigen::Matrix3f rotation = quat.toRotationMatrix();
+
+    // Assign rotation matrix
+    se3.block<3, 3>(0, 0) = rotation;
+
+    return se3;
+}
+
 class ScanHandler
 {
 public:
@@ -97,6 +120,9 @@ public:
     message_filters::Subscriber<sensor_msgs::LaserScan> laser_sub_;
     tf::MessageFilter<sensor_msgs::LaserScan> laser_notifier_;
 
+    // Subsciber for optimized poses from graph SLAM
+    ros::Subscriber op_keyframe_sub_;
+
     // tf::TransformBroadcaster keyframe_br_;
 
     double thresholdTime_;
@@ -108,6 +134,7 @@ public:
     bool time_trigger_ = true;
     ros::Time lastScanTime_;
     nav_msgs::Odometry last_scan_odom_;
+    nav_msgs::Odometry current_scan_odom_;
     nav_msgs::Odometry current_odom_;
     int current_scan_index = -1; // Frame -1 means map frame
     geometry_msgs::TransformStamped current_key_frame;
@@ -126,6 +153,8 @@ public:
         // Timer for getting a new scan
         timer_ = nh.createTimer(ros::Duration(thresholdTime_), &ScanHandler::timerCallback, this);
 
+        op_keyframe_sub_ = nh.subscribe("/graphslam/optimizedposes", 10, &ScanHandler::keyframeCallback, this);
+
         // Laser notifiers for the scans
         laser_notifier_.registerCallback(boost::bind(&ScanHandler::scanCallback, this, _1));
         laser_notifier_.setTolerance(ros::Duration(0.01));
@@ -134,8 +163,6 @@ public:
 
     void storePointCloudandKeyframe(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const geometry_msgs::TransformStamped &keyframe)
     {
-        // std::shared_ptr<pcl::PointCloud<pcl::PointXYZ>> cloudPtr = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>(*cloud);
-        // storedPointClouds_.push_back(cloudPtr);
         storedPointClouds_.push_back(cloud);
         storedKeyframes_.push_back(keyframe);
     };
@@ -160,12 +187,11 @@ private:
     std::vector<Eigen::Matrix4f> keyframes_;
     std::vector<geometry_msgs::TransformStamped> Transformations_vector_;
     std::vector<std::vector<double>> covariances_;
-    // void publishMatching(const std::pair<double, double> &transformations, const std::vector<int> &matching_ids);
 
     // Scan Callback method
     void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan)
     {
-        if (time_trigger_)
+        if (time_trigger_ && odom_trigger_)
         {
             sensor_msgs::PointCloud2 cloud_in;
             try
@@ -173,10 +199,11 @@ private:
                 ros::Time start_time_ = ros::Time::now();
                 projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_in, listener_);
 
-                last_scan_odom_ = current_odom_;
-                last_scan_odom_.header.frame_id = std::to_string(current_scan_index);
-                last_scan_odom_.child_frame_id = std::to_string(current_scan_index+1);
-                odomtoTF(last_scan_odom_, current_key_frame);
+                current_scan_odom_ = current_odom_;
+                current_scan_odom_.header.frame_id = std::to_string(current_scan_index);
+                current_scan_odom_.child_frame_id = std::to_string(current_scan_index + 1);
+
+                odomtoTF(current_scan_odom_, current_key_frame);
 
                 turtlebot_graph_slam::ResetFilter srv;
                 srv.request.reset_filter_requested = true;
@@ -212,8 +239,9 @@ private:
 
                 if (current_scan_index > 0)
                 {
+                    Eigen::Matrix4f TMaptoCurrent = keyframes_.back() * current_tf;
                     // Hypothesis generation and matching
-                    pclMatchHypothesis();
+                    pclMatchHypothesis(TMaptoCurrent);
                     Transformations_vector_ = pointCloudMatching(planarPointcloud);
                     ROS_INFO("---Factors for Pointcloud (ID - %d) Calculated---", current_scan_index);
                     // ROS_INFO("SIZE of the transformations_vector -- %zu ", Transformations_vector.size());
@@ -244,6 +272,8 @@ private:
                 }
 
                 time_trigger_ = false;
+                odom_trigger_ = false;
+                last_scan_odom_ = current_scan_odom_;
             }
             catch (tf::TransformException &e)
             {
@@ -262,19 +292,20 @@ private:
     {
         // Saving current odometry
         current_odom_ = *odom;
+        tf::Quaternion q(current_odom_.pose.pose.orientation.x,
+                         current_odom_.pose.pose.orientation.y,
+                         current_odom_.pose.pose.orientation.z,
+                         current_odom_.pose.pose.orientation.w);
 
-        double dx = odom->pose.pose.position.x - (this->last_scan_odom_.pose.pose.position.x);
-        double dy = odom->pose.pose.position.y - (this->last_scan_odom_.pose.pose.position.y);
-        double displacement = sqrt(dx * dx + dy * dy);
+        double yaw = tf::getYaw(q);
 
-        // Calculate the change in orientation
-        double dtheta = atan2(dy, dx) - atan2(this->last_scan_odom_.pose.pose.orientation.y, this->last_scan_odom_.pose.pose.orientation.x);
-        dtheta = fmod(dtheta + M_PI, 2 * M_PI) - M_PI; // Normalize to [-π, π]
-
-        // Check if the change in orientation is greater than π/8 or the displacement is greater than the threshold
-        if (fabs(dtheta) > M_PI / 8 || displacement > thresholdOdometry_)
+        if (fabs(yaw) > M_PI / 20 || current_odom_.pose.pose.position.x >= 0.1 || current_odom_.pose.pose.position.y >= 0.1)
         {
             odom_trigger_ = true;
+        }
+        else
+        {
+            odom_trigger_ = false;
         }
     };
 
@@ -319,14 +350,36 @@ private:
         return inlierCloud;
     };
 
-    void pclMatchHypothesis()
+    void pclMatchHypothesis(Eigen::Matrix4f &TMaptoCurrent)
     {
+        // Clear Previous Hypothesis
         hypothesis_.clear();
         hypothesisIDs_.clear();
 
         hypothesis_.push_back(storedPointClouds_[storedPointClouds_.size() - 2]);
         hypothesisIDs_.push_back(storedPointClouds_.size() - 2);
+
+        for (int i = 0; i < keyframes_.size() - 1; i++)
+        {
+            // Compute the Euclidean distance between translations
+            float distance = std::sqrt(
+                std::pow(TMaptoCurrent(0, 3) - keyframes_[i](0, 3), 2) +
+                std::pow(TMaptoCurrent(1, 3) - keyframes_[i](1, 3), 2) +
+                std::pow(TMaptoCurrent(2, 3) - keyframes_[i](2, 3), 2));
+
+            // Compare distance with thresholdOdometry_
+            if (distance < thresholdOdometry_ && hypothesisIDs_.size() <= 6)
+            {
+                hypothesis_.push_back(storedPointClouds_[i]);
+                hypothesisIDs_.push_back(i);
+            }
+        }
     };
+
+    Eigen::Matrix4f getInitialGuses(Eigen::Matrix4f &TMaptoCurrent, Eigen::Matrix4f &hypothesis)
+    {
+        return (hypothesis.inverse()) * TMaptoCurrent;
+    }
 
     geometry_msgs::TransformStamped SE3toTF(const Eigen::Matrix4f &transformation, const std::string &frame_id, const std::string &child_frame_id)
     {
@@ -361,8 +414,8 @@ private:
     {
         // Extract position and orientation from the Odometry message
         tf_out.header.stamp = odom_in.header.stamp;
-        tf_out.header.frame_id = std::to_string(current_scan_index); // Parent frame
-        tf_out.child_frame_id = std::to_string(current_scan_index+1);   // Child frame
+        tf_out.header.frame_id = std::to_string(current_scan_index);    // Parent frame
+        tf_out.child_frame_id = std::to_string(current_scan_index + 1); // Child frame
 
         // Position (translation)
         tf_out.transform.translation.x = odom_in.pose.pose.position.x;
@@ -381,6 +434,8 @@ private:
         std::vector<geometry_msgs::TransformStamped> transformations;
         Eigen::Matrix4f finalTF = Eigen::Matrix4f::Identity();
         geometry_msgs::TransformStamped tfs;
+
+        ROS_INFO_STREAM("Size of the hypothesis " << hypothesisIDs_.size());
 
         for (size_t i = 0; i < hypothesis_.size(); ++i)
         {
@@ -402,8 +457,10 @@ private:
 
             // Eigen::Matrix4f initial_guess = Eigen::Matrix4f::Identity();
             Eigen::Matrix4f initial_guess = TFtoSE3(current_key_frame); // TODO: Make a new function to get the initial guess
+            Eigen::Matrix4f TMaptoCurrent = keyframes_.back() * initial_guess;
+            initial_guess = getInitialGuses(TMaptoCurrent, keyframes_[hypothesisIDs_[i]]); // TODO: Make a new function to get the initial guess
 
-            std::cout << "Initial guess matrix:\n"
+            std::cout << " Initial guess matrix current " << current_scan_index << "and " << hypothesisIDs_[i] << ":\n"
                       << initial_guess << std::endl;
 
             // Create an output point cloud for the aligned source
@@ -479,30 +536,30 @@ private:
         // std::cout << "T w to k+1 for scan ID " << current_scan_index << ":\n"
         //           << Twtokplus1 << std::endl;
 
-        publishKeyframeinMap();
+        // publishKeyframeinMap();
 
         // Transform currentScan to map frame
-        pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud_world(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::transformPointCloud(*currentScan, *transformed_cloud_world, Twtokplus1);
+        // pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud_world(new pcl::PointCloud<pcl::PointXYZ>);
+        // pcl::transformPointCloud(*currentScan, *transformed_cloud_world, Twtokplus1);
 
-        // Store it in map_storedPointClouds_
-        storeWorldPointCloud(transformed_cloud_world);
+        // // Store it in map_storedPointClouds_
+        // storeWorldPointCloud(transformed_cloud_world);
 
-        // Combine the pointcloud
-        if (world_map_.empty())
-        {
-            world_map_ = (*transformed_cloud_world);
-        }
-        else
-        {
+        // // Combine the pointcloud
+        // if (world_map_.empty())
+        // {
+        //     world_map_ = (*transformed_cloud_world);
+        // }
+        // else
+        // {
 
-            world_map_ += (*transformed_cloud_world);
-        };
+        //     world_map_ += (*transformed_cloud_world);
+        // };
 
         Twtok = Twtokplus1;
 
         // Publish the whole point cloud
-        publishWorldPointcloud();
+        // publishWorldPointcloud();
     };
 
     void publishWorldPointcloud()
@@ -565,9 +622,42 @@ private:
         // }
         // tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
 
-        tfArray_msg.keyframe = last_scan_odom_;
+        tfArray_msg.keyframe = current_scan_odom_;
 
         scan_match_pub_.publish(tfArray_msg);
+    }
+
+    void keyframeCallback(const turtlebot_graph_slam::keyframe::ConstPtr &kfs)
+    {
+
+        // Extract and Update all keyframe poses
+        for (int i = 0; i < (kfs->keyframePoses.poses.size()); i++)
+        {
+            Eigen::Matrix4f keyframeSE3 = posetoSE3(kfs->keyframePoses.poses[i]);
+            keyframes_[i] = keyframeSE3;
+            pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud_world(new pcl::PointCloud<pcl::PointXYZ>);
+            pcl::transformPointCloud(*storedPointClouds_[i], *transformed_cloud_world, keyframeSE3);
+            storeWorldPointCloud(transformed_cloud_world);
+            // Combine the pointcloud
+            if (world_map_.empty())
+            {
+                world_map_ = (*transformed_cloud_world);
+            }
+            else
+            {
+                world_map_ += (*transformed_cloud_world);
+            };
+        }
+
+        publishKeyframeinMap();
+        publishWorldPointcloud();
+
+        // if kfs->covariances is not empty then extract covariances create ellipse markers and publish
+    }
+
+    void publishCovEllipse()
+    {
+        return;
     }
 };
 
