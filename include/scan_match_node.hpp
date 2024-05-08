@@ -299,7 +299,7 @@ private:
 
         double yaw = tf::getYaw(q);
 
-        if (fabs(yaw) > M_PI / 20 || current_odom_.pose.pose.position.x >= 0.1 || current_odom_.pose.pose.position.y >= 0.1)
+        if (fabs(yaw) > M_PI / 20 || fabs(current_odom_.pose.pose.position.x) >= 0.1 || fabs(current_odom_.pose.pose.position.y) >= 0.1)
         {
             odom_trigger_ = true;
         }
@@ -312,11 +312,6 @@ private:
     // Timer Callback
     void timerCallback(const ros::TimerEvent &)
     {
-        // Check if enough time has passed since the last scan
-        // if ((ros::Time::now() - lastScanTime_).toSec() > thresholdTime_)
-        // {
-        //     time_trigger_=true;
-        // }
         time_trigger_ = true;
     };
 
@@ -456,9 +451,9 @@ private:
             icp.setEuclideanFitnessEpsilon(0.05);
 
             // Eigen::Matrix4f initial_guess = Eigen::Matrix4f::Identity();
-            Eigen::Matrix4f initial_guess = TFtoSE3(current_key_frame); // TODO: Make a new function to get the initial guess
+            Eigen::Matrix4f initial_guess = TFtoSE3(current_key_frame); 
             Eigen::Matrix4f TMaptoCurrent = keyframes_.back() * initial_guess;
-            initial_guess = getInitialGuses(TMaptoCurrent, keyframes_[hypothesisIDs_[i]]); // TODO: Make a new function to get the initial guess
+            initial_guess = getInitialGuses(TMaptoCurrent, keyframes_[hypothesisIDs_[i]]);
 
             std::cout << " Initial guess matrix current " << current_scan_index << "and " << hypothesisIDs_[i] << ":\n"
                       << initial_guess << std::endl;
@@ -597,12 +592,6 @@ private:
 
             // Add the pose to the PoseArray
             poseArray.poses.push_back(pose);
-
-            // // Publish the pose as a TF transform to visualize it as a frame in RViz
-            // tf::Transform transform;
-            // tf::poseMsgToTF(pose, transform);
-            // tf::StampedTransform stampedTransform(transform, poseArray.header.stamp, "map", "keyframe_" + std::to_string(i));
-            // keyframe_br_.sendTransform(stampedTransform);
         }
 
         keyframe_pub_.publish(poseArray);
@@ -613,6 +602,7 @@ private:
         turtlebot_graph_slam::tfArray tfArray_msg;
         tfArray_msg.transforms.assign(transforms.begin(), transforms.end());
 
+        // TODO: Adding ICP covariances into the msg
         // std::vector<std::shared_ptr<std_msgs::Float64MultiArray>> covarianceMessages;
 
         // for (const auto& cov : covariances){
@@ -648,15 +638,16 @@ private:
                 world_map_ += (*transformed_cloud_world);
             };
         }
+        // if kfs->covariances is not empty then extract covariances create ellipse markers and publish
 
         publishKeyframeinMap();
         publishWorldPointcloud();
+        publishCovEllipse();
 
-        // if kfs->covariances is not empty then extract covariances create ellipse markers and publish
     }
 
     void publishCovEllipse()
-    {
+    {   // TODO: Coding for the covariance of the ICP
         return;
     }
 };

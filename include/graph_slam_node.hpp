@@ -36,6 +36,8 @@
 #include <iostream>
 #include <string>
 #include <memory>
+#include <exception>
+#include <stdexcept>
 
 using namespace std;
 using namespace gtsam;
@@ -62,7 +64,7 @@ private:
 
 protected:
     ros::NodeHandle nh_;
-    ros::Subscriber scan_match_sub_, odom_sub_;
+    ros::Subscriber scan_match_sub_;
 
     ros::Publisher optimized_pose_pub_ = this->nh_.advertise<turtlebot_graph_slam::keyframe>("/graphslam/optimizedposes", 10);
 
@@ -81,7 +83,6 @@ public:
     void initGraph();
     void initOptimizer();
     void addInitialValuestoGraph();
-    void odomCB(const nav_msgs::Odometry::ConstPtr &odom_msg);
     void scanCB(const turtlebot_graph_slam::tfArrayConstPtr &scan_msg);
     void solveAndResetGraph();
     void publishResults();
@@ -90,7 +91,6 @@ public:
 graph_slam_handler::graph_slam_handler(ros::NodeHandle &nh) : nh_(nh)
 {
     scan_match_sub_ = nh.subscribe("/scanmatches", 10, &graph_slam_handler::scanCB, this);
-    odom_sub_ = nh.subscribe("/odom", 1, &graph_slam_handler::odomCB, this);
 
     initGraph();
     initOptimizer();
@@ -228,17 +228,6 @@ void graph_slam_handler::initOptimizer()
     }
 }
 
-void graph_slam_handler::odomCB(const nav_msgs::Odometry::ConstPtr &odom_msg)
-{
-    current_odom_ = *odom_msg;
-    if (!initialValues_added_ && graph_initialised_)
-    {
-        initial_Odom_ = *odom_msg;
-        addInitialValuestoGraph();
-        initialValues_added_ = true;
-        ROS_INFO_STREAM("Initial Values added to the graph.");
-    }
-}
 
 void graph_slam_handler::addInitialValuestoGraph()
 {
@@ -252,7 +241,6 @@ void graph_slam_handler::addInitialValuestoGraph()
 
     current_pose_ = Pose2(x, y, tf::getYaw(q));
 
-    // Pose2 prior_pose(x, y, tf::getYaw(q));
     std::cout << " Prior pose  " << current_pose_ << std::endl;
 
     gtsam::Matrix33 prior_noise_model;
@@ -265,26 +253,15 @@ void graph_slam_handler::addInitialValuestoGraph()
     graph_->addPrior(X(index_), current_pose_, prior_noise_model);
 
     std::cout << " Prior noise model " << prior_noise_model << std::endl;
+
+    initialValues_added_ = true;
 }
 
 void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &scan_msg)
 {
-    tf::Quaternion qu(scan_msg->keyframe.pose.pose.orientation.x,
-                      scan_msg->keyframe.pose.pose.orientation.y,
-                      scan_msg->keyframe.pose.pose.orientation.z,
-                      scan_msg->keyframe.pose.pose.orientation.w);
-
-    Pose2 odometry(scan_msg->keyframe.pose.pose.position.x, scan_msg->keyframe.pose.pose.position.y, tf::getYaw(qu));
-
-    gtsam::Matrix33 odom_cov;
-    odom_cov << scan_msg->keyframe.pose.covariance[0], scan_msg->keyframe.pose.covariance[1], scan_msg->keyframe.pose.covariance[5],
-        scan_msg->keyframe.pose.covariance[6], scan_msg->keyframe.pose.covariance[7], scan_msg->keyframe.pose.covariance[11],
-        scan_msg->keyframe.pose.covariance[30], scan_msg->keyframe.pose.covariance[31], scan_msg->keyframe.pose.covariance[35];
-
     try
     {
-        current_scan_index_ = std::stoi(scan_msg->keyframe.child_frame_id);
-        index_ = current_scan_index_ + 1;
+        index_ = std::stoi(scan_msg->keyframe.child_frame_id);
     }
     catch (std::invalid_argument const &e)
     {
@@ -295,108 +272,138 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
         ROS_ERROR("Error converting child_frame_id to integer: %s", e.what());
     }
 
-    if (graph_.get() != nullptr && optimizer_initialised_ && initialValues_added_ && graph_initialised_)
+    if (!initialValues_added_)
     {
-        if (!scan_msg->transforms.empty())
+        initial_Odom_ = scan_msg->keyframe;
+        addInitialValuestoGraph();
+        ROS_INFO_STREAM("Initial Values added to the graph.");
+    }
+    else
+    {
+
+        tf::Quaternion qu(scan_msg->keyframe.pose.pose.orientation.x,
+                          scan_msg->keyframe.pose.pose.orientation.y,
+                          scan_msg->keyframe.pose.pose.orientation.z,
+                          scan_msg->keyframe.pose.pose.orientation.w);
+
+        Pose2 odometry(scan_msg->keyframe.pose.pose.position.x, scan_msg->keyframe.pose.pose.position.y, tf::getYaw(qu));
+
+        gtsam::Matrix33 odom_cov;
+        odom_cov << scan_msg->keyframe.pose.covariance[0], scan_msg->keyframe.pose.covariance[1], scan_msg->keyframe.pose.covariance[5],
+            scan_msg->keyframe.pose.covariance[6], scan_msg->keyframe.pose.covariance[7], scan_msg->keyframe.pose.covariance[11],
+            scan_msg->keyframe.pose.covariance[30], scan_msg->keyframe.pose.covariance[31], scan_msg->keyframe.pose.covariance[35];
+
+        if (graph_.get() != nullptr && optimizer_initialised_ && initialValues_added_ && graph_initialised_)
         {
-            for (int i = 0; i < scan_msg->transforms.size(); i++)
+            if (!scan_msg->transforms.empty())
             {
-                // extract pose2 from the geometry_msgs/transformedStamped
-                tf::Quaternion qt(scan_msg->transforms[i].transform.rotation.x, scan_msg->transforms[i].transform.rotation.y, scan_msg->transforms[i].transform.rotation.z, scan_msg->transforms[i].transform.rotation.w);
-                Pose2 scan_pose(scan_msg->transforms[i].transform.translation.x, scan_msg->transforms[i].transform.translation.y, tf::getYaw(qt));
-
-                std::cout << "odometry pose - " << odometry << "  scan pose  " << scan_pose << std::endl;
-
-                int scan_match_with_frame = std::stoi(scan_msg->transforms[i].header.frame_id) + 1;
-
-                // add initial estimates composing logic
-                if (i == 0)
+                for (int i = 0; i < scan_msg->transforms.size(); i++)
                 {
-                    current_pose_ = current_pose_.compose(scan_pose);
-                    initial_estimates_.insert(X(index_), current_pose_);
+                    // extract pose2 from the geometry_msgs/transformedStamped
+                    tf::Quaternion qt(scan_msg->transforms[i].transform.rotation.x, scan_msg->transforms[i].transform.rotation.y, scan_msg->transforms[i].transform.rotation.z, scan_msg->transforms[i].transform.rotation.w);
+                    Pose2 scan_pose(scan_msg->transforms[i].transform.translation.x, scan_msg->transforms[i].transform.translation.y, tf::getYaw(qt));
 
-                    // add odom factor to the graph
-                    graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
-                }
+                    std::cout << "odometry pose - " << odometry << "  scan pose  " << scan_pose << std::endl;
 
-                // Add scan matching factor
-                if (scan_msg->covariances.empty())
-                {
-                    auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.07, 0.07, 0.08));
-                    graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(scan_match_with_frame), X(index_), scan_pose, icp_noise_model);
-                }
-                else
-                {
-                    Matrix33 scan_cov; // TODO: Read covariance from the msg
-                    graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), scan_pose, noiseModel::Diagonal::Covariance(scan_cov));
+                    int scan_match_with_frame = std::stoi(scan_msg->transforms[i].header.frame_id);
+
+                    // add initial estimates composing logic
+                    if (i == 0)
+                    {
+                        current_pose_ = current_pose_.compose(scan_pose);
+                        initial_estimates_.insert(X(index_), current_pose_);
+
+                        // add odom factor to the graph
+                        graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
+                    }
+
+                    // Add scan matching factor
+                    if (scan_msg->covariances.empty())
+                    {
+                        auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.07, 0.07, 0.08));
+                        graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(scan_match_with_frame), X(index_), scan_pose, icp_noise_model);
+                    }
+                    else
+                    {
+                        Matrix33 scan_cov; // TODO: Read covariance from the msg
+                        graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), scan_pose, noiseModel::Diagonal::Covariance(scan_cov));
+                    }
                 }
             }
-        }
-        else // there are no scan matches
-        {
-            current_pose_ = current_pose_.compose(odometry);
-
-            ROS_INFO_STREAM("FIOEROIEWKLEWVNOIEWVNOIWENVOIWEIEONVOWIEVNOWEVIWN");
-
-            // add initial estimates for X(1) from odometry
-            initial_estimates_.insert(X(index_), current_pose_);
-
-            // add odometry Factor between X(index_-1) to X(index_) to graph
-            graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
-        }
-        
-        if (index_ > 1)
-        {  
-            solveAndResetGraph();
-        }
-
-        if (!results_.empty())
-        {
-            // Marginals marg(*graph_, results_);
-
-            // update current pose
-            current_pose_ = results_.at<Pose2>(X(index_));
-
-            for (int i = 0; i < results_.size(); i++)
+            else // there are no scan matches
             {
-                ROS_INFO_STREAM("Keyframe number " << i << " Pose: - " << results_.at<Pose2>(X(i)));
-                // ROS_INFO_STREAM("Keyframe number " << i << " Covariance: - \n" << marg.marginalCovariance(X(i)));
+                current_pose_ = current_pose_.compose(odometry);
+
+                // add initial estimates for X(1) from odometry
+                initial_estimates_.insert(X(index_), current_pose_);
+
+                // add odometry Factor between X(index_-1) to X(index_) to graph
+                graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
             }
 
-            // publish graph results
-            publishResults();
+            if (index_ > 1)
+            {
+                solveAndResetGraph();
+            }
+
+            if (!results_.empty())
+            {
+                // update current pose
+                current_pose_ = results_.at<Pose2>(X(index_));
+
+                // Printing the results on console
+                // Marginals marg(*graph_, results_);
+                for (int i = 0; i < results_.size(); i++)
+                {
+                    ROS_INFO_STREAM("Keyframe number " << i << " Pose: - " << results_.at<Pose2>(X(i)));
+                    // ROS_INFO_STREAM("Keyframe number " << i << " Covariance: - \n" << marg.marginalCovariance(X(i)));
+                }
+
+                // publish graph results
+                publishResults();
+            }
         }
     }
 }
 
 void graph_slam_handler::solveAndResetGraph()
 {
-    if (isam2InUse_)
+    try
     {
-        ROS_INFO_STREAM("Optimizing the graph using ISAM2!");
-        isam2_->update(*graph_, initial_estimates_);
-        results_ = isam2_->calculateEstimate();
+        if (isam2InUse_)
+        {
+            ROS_INFO_STREAM("Optimizing the graph using ISAM2!");
+            isam2_->update(*graph_, initial_estimates_);
+            results_ = isam2_->calculateEstimate();
 
-        graph_->resize(0);
-        initial_estimates_.clear();
+            graph_->resize(0);
+            initial_estimates_.clear();
+        }
+        else
+        {
+            ROS_INFO_STREAM("Optimizing the graph using Levenberg-Marquardt Optimizer!");
+
+            // Create LevenbergMarquardtOptimizer instance
+            LevenbergMarquardtOptimizer optimizer(*graph_, initial_estimates_, optimizerParams_);
+            results_ = optimizer.optimize();
+        }
     }
-    else
+    catch (const std::exception &e)
     {
-        ROS_INFO_STREAM("Optimizing the graph using Levenberg-Marquardt Optimizer!");
-
-        // Create LevenbergMarquardtOptimizer instance
-        LevenbergMarquardtOptimizer optimizer(*graph_, initial_estimates_, optimizerParams_);
-        results_ = optimizer.optimize();
+        ROS_ERROR_STREAM("Error occurred while optimizing the graph: " << e.what());
+    }
+    catch (...)
+    {
+        ROS_ERROR_STREAM("Unknown error occurred while optimizing the graph.");
     }
 }
 
 void graph_slam_handler::publishResults()
 {
     turtlebot_graph_slam::keyframe keyframe_msg;
-    // std::vector<std_msgs::Float64MultiArray> covarianceMessages;
 
     // Extract and publish optimized poses
-    for (int i = 1; i < results_.size(); i++)
+    for (int i = 0; i < results_.size(); i++)
     {
         Pose2 pose = results_.at<Pose2>(X(i));
         geometry_msgs::Pose pose_stamped;
@@ -404,26 +411,31 @@ void graph_slam_handler::publishResults()
         pose_stamped.position.y = pose.y();
         pose_stamped.orientation = tf::createQuaternionMsgFromYaw(pose.theta());
         keyframe_msg.keyframePoses.poses.push_back(pose_stamped);
-
-        // If ISAM2 is not in use, add covariances
-        // if (!isam2InUse_)
-        // {
-        //     Marginals marg(*graph_, results_);
-        //     Matrix cov = marg.marginalCovariance(X(i));
-        //     vector<double> covariance_vec(9);
-        //     std_msgs::Float64MultiArray covarianceMsg;
-        //     for (int j = 0; j < 3; j++)
-        //     {
-        //         for (int k = 0; k < 3; k++)
-        //         {
-        //             covariance_vec[j * 3 + k] = cov(j, k);
-        //         }
-        //     }
-        //     covarianceMsg.data.assign(covariance_vec.begin(), covariance_vec.end());
-        //     covarianceMessages.push_back(covarianceMsg);
-        // }
     }
-    // keyframe_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
+    // If ISAM2 is not in use, add covariances
+    if (!isam2InUse_)
+    {
+        std::vector<std_msgs::Float64MultiArray> covarianceMessages;
+        Marginals marg(*graph_, results_);
+
+        for (int i = 0; i < results_.size(); i++)
+        {
+            vector<double> covariance_vec(9);
+            std_msgs::Float64MultiArray covarianceMsg;
+
+            Matrix cov = marg.marginalCovariance(X(i));
+            for (int j = 0; j < 3; j++)
+            {
+                for (int k = 0; k < 3; k++)
+                {
+                    covariance_vec[j * 3 + k] = cov(j, k);
+                }
+            }
+            covarianceMsg.data.assign(covariance_vec.begin(), covariance_vec.end());
+            covarianceMessages.push_back(covarianceMsg);
+        }
+        keyframe_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
+    }
     optimized_pose_pub_.publish(keyframe_msg);
 }
 
