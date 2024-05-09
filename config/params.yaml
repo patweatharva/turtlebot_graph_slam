@@ -1,11 +1,12 @@
 graphSLAM:
- ISAM2:
-    Use_ISAM2: true
+  saveGraph: false
+  ISAM2:
+    Use_ISAM2: false
     params:
       relinearizeThreshold: 0.1
       relinearizeSkip: 10
       factorization: "CHOLESKY"
- LevenbergMarquardt:
+  LevenbergMarquardt:
     params:
       initialLambda: 0.00001
       lambdaFactor: 5.0
@@ -15,4 +16,3 @@ graphSLAM:
       useDiagonalDamping: true
       diagonalDamping: 0.001
       useLevenbergMarquardt: true
-      

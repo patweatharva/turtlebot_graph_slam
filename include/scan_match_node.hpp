@@ -32,6 +32,8 @@
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/Pose.h>
 
+#include <visualization_msgs/MarkerArray.h>
+
 #include "turtlebot_graph_slam/ResetFilter.h"
 #include "turtlebot_graph_slam/tfArray.h"
 #include "turtlebot_graph_slam/keyframe.h"
@@ -110,6 +112,7 @@ public:
     ros::Publisher pointcloud_pub_ = this->nh_.advertise<sensor_msgs::PointCloud2>("/pc", 10);
     ros::Publisher keyframe_pub_ = this->nh_.advertise<geometry_msgs::PoseArray>("/keyframes", 10);
     ros::Publisher scan_match_pub_ = this->nh_.advertise<turtlebot_graph_slam::tfArray>("/scanmatches", 10);
+    ros::Publisher ellipse_pub_ = this->nh_.advertise<visualization_msgs::MarkerArray>("ellipse_markers", 1000);
 
     // Laser Geometry Projection for converting scan to PointCloud
     laser_geometry::LaserProjection projector_;
@@ -130,8 +133,9 @@ public:
     ros::Subscriber odom_sub_;
     ros::Timer timer_;
 
-    bool odom_trigger_ = true;
-    bool time_trigger_ = true;
+    bool odom_trigger_ = false;
+    bool time_trigger_ = false;
+
     ros::Time lastScanTime_;
     nav_msgs::Odometry last_scan_odom_;
     nav_msgs::Odometry current_scan_odom_;
@@ -451,7 +455,7 @@ private:
             icp.setEuclideanFitnessEpsilon(0.05);
 
             // Eigen::Matrix4f initial_guess = Eigen::Matrix4f::Identity();
-            Eigen::Matrix4f initial_guess = TFtoSE3(current_key_frame); 
+            Eigen::Matrix4f initial_guess = TFtoSE3(current_key_frame);
             Eigen::Matrix4f TMaptoCurrent = keyframes_.back() * initial_guess;
             initial_guess = getInitialGuses(TMaptoCurrent, keyframes_[hypothesisIDs_[i]]);
 
@@ -620,6 +624,8 @@ private:
     void keyframeCallback(const turtlebot_graph_slam::keyframe::ConstPtr &kfs)
     {
 
+        world_map_.clear();
+        
         // Extract and Update all keyframe poses
         for (int i = 0; i < (kfs->keyframePoses.poses.size()); i++)
         {
@@ -638,17 +644,83 @@ private:
                 world_map_ += (*transformed_cloud_world);
             };
         }
+
+        visualization_msgs::MarkerArray markerArray;
+
         // if kfs->covariances is not empty then extract covariances create ellipse markers and publish
+        if (!kfs->covariances.empty())
+        {
+            // Loop through each covariance matrix
+            for (int i = 0; i < kfs->covariances.size(); i++)
+            {
+                // Convert the covariance matrix from Float64MultiArray to Eigen Matrix
+                Eigen::Matrix<float, 3, 3> covarianceMatrix;
+                for (int j = 0; j < 3; ++j)
+                {
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        covarianceMatrix(j, k) = kfs->covariances[i].data[j * 3 + k];
+                    }
+                }
+
+
+                Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> eigensolver(covarianceMatrix);
+                Eigen::VectorXf eigenvalues = eigensolver.eigenvalues();
+                Eigen::MatrixXf eigenvectors = eigensolver.eigenvectors();
+
+                double lengthMajor = std::sqrt(eigenvalues(2));
+                double lengthMinor = std::sqrt(eigenvalues(1));
+
+                // ROS_INFO_STREAM("Covariance Matrix "<< covarianceMatrix);
+                // ROS_INFO_STREAM("eigen vectors "<< eigenvectors);
+                // ROS_INFO_STREAM("Eigen values "<< eigenvalues);
+                
+
+                tf::Quaternion q;
+                q.setRPY(0, 0, atan2(eigenvectors(0, 0), eigenvectors(1, 0)));
+
+                tf::Pose kfpose;
+                tf::poseMsgToTF(kfs->keyframePoses.poses[i], kfpose);
+
+                visualization_msgs::Marker marker;
+                marker.id = i;
+                marker.header.frame_id = "map";
+
+                marker.type = visualization_msgs::Marker::CYLINDER;
+
+                marker.pose.position.x = kfpose.getOrigin().x();
+                marker.pose.position.y = kfpose.getOrigin().y();
+                marker.pose.position.z = 0.0;
+
+                marker.pose.orientation.w = q.w();
+                marker.pose.orientation.x = q.x();
+                marker.pose.orientation.y = q.y();
+                marker.pose.orientation.z = q.z();
+
+                marker.scale.x = lengthMajor;
+                marker.scale.y = lengthMinor;
+                marker.scale.z = 0.001;
+
+                marker.color.a = 1.0; // Fully opaque
+                marker.color.r = 1.0;
+                marker.color.g = 0.0;
+                marker.color.b = 0.0;
+
+                markerArray.markers.push_back(marker);
+            }
+        }
 
         publishKeyframeinMap();
         publishWorldPointcloud();
-        publishCovEllipse();
-
+        publishCovEllipse(markerArray);
     }
 
-    void publishCovEllipse()
-    {   // TODO: Coding for the covariance of the ICP
-        return;
+    void publishCovEllipse(const visualization_msgs::MarkerArray &ellipse_arr)
+    {
+        if (!ellipse_arr.markers.empty())
+        {
+            ellipse_pub_.publish(ellipse_arr);
+        }
     }
 };
 

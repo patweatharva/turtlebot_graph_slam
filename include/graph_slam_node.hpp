@@ -2,6 +2,7 @@
 #define GRAPH_SLAM_HANDLER_H
 
 #include "ros/ros.h"
+#include "ros/package.h"
 
 #include <Eigen/Dense>
 
@@ -77,6 +78,8 @@ public:
     bool isam2InUse_;
     int current_scan_index_ = -1;
 
+    bool saveGraph_ = true;
+
     graph_slam_handler(ros::NodeHandle &nh);
     ~graph_slam_handler();
 
@@ -94,6 +97,8 @@ graph_slam_handler::graph_slam_handler(ros::NodeHandle &nh) : nh_(nh)
 
     initGraph();
     initOptimizer();
+
+    nh_.getParam("/graphSLAM/saveGraph", saveGraph_);
 }
 
 graph_slam_handler::~graph_slam_handler()
@@ -228,7 +233,6 @@ void graph_slam_handler::initOptimizer()
     }
 }
 
-
 void graph_slam_handler::addInitialValuestoGraph()
 {
     double x = initial_Odom_.pose.pose.position.x;
@@ -358,7 +362,6 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     ROS_INFO_STREAM("Keyframe number " << i << " Pose: - " << results_.at<Pose2>(X(i)));
                     // ROS_INFO_STREAM("Keyframe number " << i << " Covariance: - \n" << marg.marginalCovariance(X(i)));
                 }
-
                 // publish graph results
                 publishResults();
             }
@@ -395,6 +398,13 @@ void graph_slam_handler::solveAndResetGraph()
     catch (...)
     {
         ROS_ERROR_STREAM("Unknown error occurred while optimizing the graph.");
+    }
+
+    if (saveGraph_)
+    {
+        std::string file_name = ros::package::getPath("turtlebot_graph_slam") + "/graph_viz/factorGraphViz.dot";
+        ROS_INFO_STREAM("Graph viz file"<<file_name);
+        graph_->saveGraph(file_name,results_);
     }
 }
 
