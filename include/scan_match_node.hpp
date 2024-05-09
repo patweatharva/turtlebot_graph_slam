@@ -114,7 +114,7 @@ public:
     Eigen::Matrix4f Tktokplus1 = Eigen::Matrix4f::Identity();
     Eigen::Matrix4f Twtokplus1 = Eigen::Matrix4f::Identity();
 
-    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), laser_sub_(nh, "/turtlebot/kobuki/sensors/rplidar", 1), laser_notifier_(laser_sub_, listener_, "turtlebot/kobuki/base_footprint", 1), client_(nh.serviceClient<turtlebot_graph_slam::ResetFilter>("ResetFilter"))
+    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), laser_sub_(nh, "/turtlebot/kobuki/sensors/rplidar", 1), laser_notifier_(laser_sub_, listener_, "turtlebot/kobuki/predicted_base_footprint", 1), client_(nh.serviceClient<turtlebot_graph_slam::ResetFilter>("ResetFilter"))
     {
 
         // Initialize subscribers
@@ -165,7 +165,7 @@ private:
             try
             {
                 ros::Time start_time_ = ros::Time::now();
-                projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_in, listener_);
+                projector_.transformLaserScanToPointCloud("turtlebot/kobuki/predicted_base_footprint", *scan, cloud_in, listener_);
 
                 last_scan_odom_ = current_odom_;
                 odomtoTF(last_scan_odom_, current_key_frame);
