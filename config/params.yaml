@@ -1,5 +1,6 @@
 graphSLAM:
-  saveGraph: false
+  saveGraph: true
+  saveWorldMap: true
   ISAM2:
     Use_ISAM2: false
     params:

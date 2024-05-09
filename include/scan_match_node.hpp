@@ -136,6 +136,8 @@ public:
     bool odom_trigger_ = false;
     bool time_trigger_ = false;
 
+    bool saveWorldMap_ = false;
+
     ros::Time lastScanTime_;
     nav_msgs::Odometry last_scan_odom_;
     nav_msgs::Odometry current_scan_odom_;
@@ -159,6 +161,8 @@ public:
 
         op_keyframe_sub_ = nh.subscribe("/graphslam/optimizedposes", 10, &ScanHandler::keyframeCallback, this);
 
+        nh_.getParam("/graphSLAM/saveWorldMap", saveWorldMap_);
+
         // Laser notifiers for the scans
         laser_notifier_.registerCallback(boost::bind(&ScanHandler::scanCallback, this, _1));
         laser_notifier_.setTolerance(ros::Duration(0.01));
@@ -174,9 +178,6 @@ public:
     void storeWorldPointCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud)
     {
         map_storedPointClouds_.push_back(cloud);
-        std::string packagePath = ros::package::getPath("turtlebot_graph_slam");
-        std::string directory = "/pcl_viz/";
-        pcl::io::savePCDFileASCII(packagePath + directory + "world_map.pcd", *cloud);
     };
 
 private:
@@ -483,13 +484,13 @@ private:
                 double meanSquaredDistance = (double)icp.getFitnessScore();
                 ROS_INFO("ICP Fitness score --- %f", meanSquaredDistance);
 
-                // Plot Transformation saving condition
-                if (current_scan_index == 2)
-                {
-                    savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned);
-                };
+                // For checking scan Matching 
+                // if (current_scan_index == 2)
+                // {
+                //     savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned);
+                // };
 
-                if (meanSquaredDistance <= 2.0)
+                if (meanSquaredDistance <= 1.5)
                 {
                     // Create a TransformStamped message
                     std::string frameID = std::to_string(hypothesisIDs_[i]);
@@ -623,9 +624,10 @@ private:
 
     void keyframeCallback(const turtlebot_graph_slam::keyframe::ConstPtr &kfs)
     {
-
-        world_map_.clear();
         
+        // Clear previous map before building new map with optimized poses
+        world_map_.clear();
+
         // Extract and Update all keyframe poses
         for (int i = 0; i < (kfs->keyframePoses.poses.size()); i++)
         {
@@ -643,6 +645,13 @@ private:
             {
                 world_map_ += (*transformed_cloud_world);
             };
+        }
+
+        if (saveWorldMap_)
+        {
+            std::string packagePath = ros::package::getPath("turtlebot_graph_slam");
+            std::string directory = "/pcl_viz/";
+            pcl::io::savePCDFileASCII(packagePath + directory + "world_map.pcd", world_map_);
         }
 
         visualization_msgs::MarkerArray markerArray;
@@ -663,7 +672,6 @@ private:
                     }
                 }
 
-
                 Eigen::SelfAdjointEigenSolver<Eigen::MatrixXf> eigensolver(covarianceMatrix);
                 Eigen::VectorXf eigenvalues = eigensolver.eigenvalues();
                 Eigen::MatrixXf eigenvectors = eigensolver.eigenvectors();
@@ -674,7 +682,6 @@ private:
                 // ROS_INFO_STREAM("Covariance Matrix "<< covarianceMatrix);
                 // ROS_INFO_STREAM("eigen vectors "<< eigenvectors);
                 // ROS_INFO_STREAM("Eigen values "<< eigenvalues);
-                
 
                 tf::Quaternion q;
                 q.setRPY(0, 0, atan2(eigenvectors(0, 0), eigenvectors(1, 0)));
@@ -701,7 +708,7 @@ private:
                 marker.scale.y = lengthMinor;
                 marker.scale.z = 0.001;
 
-                marker.color.a = 1.0; // Fully opaque
+                marker.color.a = 0.5; // Fully opaque
                 marker.color.r = 1.0;
                 marker.color.g = 0.0;
                 marker.color.b = 0.0;

@@ -324,7 +324,7 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     // Add scan matching factor
                     if (scan_msg->covariances.empty())
                     {
-                        auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.07, 0.07, 0.08));
+                        auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.09, 0.09, 0.08));
                         graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(scan_match_with_frame), X(index_), scan_pose, icp_noise_model);
                     }
                     else
