@@ -37,6 +37,7 @@
 #include "turtlebot_graph_slam/ResetFilter.h"
 #include "turtlebot_graph_slam/tfArray.h"
 #include "turtlebot_graph_slam/keyframe.h"
+#include <std_srvs/Empty.h>
 
 #include <sstream>
 
@@ -145,12 +146,13 @@ public:
     int current_scan_index = -1; // Frame -1 means map frame
     geometry_msgs::TransformStamped current_key_frame;
     ros::ServiceClient client_;
+    ros::ServiceClient client_octomap_;
 
     Eigen::Matrix4f Twtok = Eigen::Matrix4f::Identity();
     Eigen::Matrix4f Tktokplus1 = Eigen::Matrix4f::Identity();
     Eigen::Matrix4f Twtokplus1 = Eigen::Matrix4f::Identity();
 
-    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), laser_sub_(nh, "/turtlebot/kobuki/sensors/rplidar", 1), laser_notifier_(laser_sub_, listener_, "turtlebot/kobuki/base_footprint", 1), client_(nh.serviceClient<turtlebot_graph_slam::ResetFilter>("ResetFilter"))
+    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), laser_sub_(nh, "/turtlebot/kobuki/sensors/rplidar", 1), laser_notifier_(laser_sub_, listener_, "turtlebot/kobuki/base_footprint", 1), client_(nh.serviceClient<turtlebot_graph_slam::ResetFilter>("ResetFilter")), client_octomap_(nh.serviceClient<std_srvs::Empty>("/octomap_server/reset"))
     {
 
         // Initialize subscribers
@@ -484,7 +486,7 @@ private:
                 double meanSquaredDistance = (double)icp.getFitnessScore();
                 ROS_INFO("ICP Fitness score --- %f", meanSquaredDistance);
 
-                // For checking scan Matching 
+                // For checking scan Matching
                 // if (current_scan_index == 2)
                 // {
                 //     savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned);
@@ -624,9 +626,20 @@ private:
 
     void keyframeCallback(const turtlebot_graph_slam::keyframe::ConstPtr &kfs)
     {
-        
+
         // Clear previous map before building new map with optimized poses
         world_map_.clear();
+
+        std_srvs::Empty empt_srv;
+
+        if (client_octomap_.call(empt_srv))
+        {
+            ROS_INFO("Octomap reset!");
+        }
+        else
+        {
+            ROS_ERROR("Failed to call reset Octomap!!!!!!!");
+        };
 
         // Extract and Update all keyframe poses
         for (int i = 0; i < (kfs->keyframePoses.poses.size()); i++)
