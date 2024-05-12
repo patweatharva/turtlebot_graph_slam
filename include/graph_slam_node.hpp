@@ -322,14 +322,25 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     }
 
                     // Add scan matching factor
-                    if (scan_msg->covariances.empty())
+                    if (scan_msg->covariances.empty() || scan_msg->covariances[i].data.size()!=9)
                     {
                         auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.09, 0.09, 0.08));
                         graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(scan_match_with_frame), X(index_), scan_pose, icp_noise_model);
                     }
                     else
                     {
-                        Matrix33 scan_cov; // TODO: Read covariance from the msg
+                        std_msgs::Float64MultiArray covarianceArray = scan_msg->covariances[i];
+
+                        // Convert the data to a std::vector<double>
+                        std::vector<double> covarianceData;
+                        covarianceData.assign(covarianceArray.data.begin(), covarianceArray.data.end());
+
+                        // Initialize Matrix33 with the data
+                        Matrix33 scan_cov;
+                        scan_cov<< covarianceData[0],covarianceData[1],covarianceData[2],
+                                    covarianceData[3],covarianceData[4],covarianceData[5],
+                                    covarianceData[6],covarianceData[7],covarianceData[8];
+
                         graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), scan_pose, noiseModel::Diagonal::Covariance(scan_cov));
                     }
                 }
@@ -403,8 +414,8 @@ void graph_slam_handler::solveAndResetGraph()
     if (saveGraph_)
     {
         std::string file_name = ros::package::getPath("turtlebot_graph_slam") + "/graph_viz/factorGraphViz.dot";
-        ROS_INFO_STREAM("Graph viz file"<<file_name);
-        graph_->saveGraph(file_name,results_);
+        ROS_INFO_STREAM("Graph viz file" << file_name);
+        graph_->saveGraph(file_name, results_);
     }
 }
 

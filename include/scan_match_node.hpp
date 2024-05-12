@@ -3,44 +3,42 @@
 
 #include <cmath>
 
+// for ICP Covariance, contains Eigen Includes and PCL includes
+#include "icp_cov_estimation.h"
+
+// ROS includes
 #include "ros/ros.h"
 #include <ros/package.h>
+
+// Message filter include
+#include <message_filters/subscriber.h>
+
+// tf includes
+#include <tf/transform_listener.h> // Include tf header
+#include <tf/message_filter.h>
+#include <tf/transform_datatypes.h>
+#include <tf/transform_broadcaster.h>
+
+#include <laser_geometry/laser_geometry.h>
+
+// Message types includes
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/LaserScan.h>
 #include <std_msgs/Float64MultiArray.h>
 #include <nav_msgs/Odometry.h>
-#include <laser_geometry/laser_geometry.h>
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-#include <pcl/registration/icp.h>
-#include <pcl_conversions/pcl_conversions.h>
-#include <tf/transform_listener.h> // Include tf header
-#include <tf/message_filter.h>
-#include <message_filters/subscriber.h>
-#include <pcl/registration/icp.h>
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
-#include <pcl/segmentation/sac_segmentation.h>
-#include <geometry_msgs/TransformStamped.h>
-#include <tf/transform_datatypes.h>
-#include <tf/transform_broadcaster.h>
-#include <Eigen/Dense>
-#include <eigen3/Eigen/Core>
-#include <pcl/visualization/pcl_visualizer.h>
-#include <pcl/io/pcd_io.h>
-#include <pcl/filters/extract_indices.h>
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/Pose.h>
-
+#include <geometry_msgs/TransformStamped.h>
 #include <visualization_msgs/MarkerArray.h>
 
+// Services Includes
 #include "turtlebot_graph_slam/ResetFilter.h"
 #include "turtlebot_graph_slam/tfArray.h"
 #include "turtlebot_graph_slam/keyframe.h"
 #include <std_srvs/Empty.h>
 
+// C++ includes
 #include <sstream>
-
 #include <iostream>
 #include <vector>
 
@@ -436,6 +434,7 @@ private:
         std::vector<geometry_msgs::TransformStamped> transformations;
         Eigen::Matrix4f finalTF = Eigen::Matrix4f::Identity();
         geometry_msgs::TransformStamped tfs;
+        covariances_.clear();
 
         ROS_INFO_STREAM("Size of the hypothesis " << hypothesisIDs_.size());
 
@@ -444,6 +443,16 @@ private:
             pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
             icp.setInputSource(currentScan);
             icp.setInputTarget(hypothesis_[i]);
+
+            // Setup for the Correspondence Estimation
+            pcl::registration::CorrespondenceEstimation<pcl::PointXYZ, pcl::PointXYZ>::Ptr corr_est(new pcl::registration::CorrespondenceEstimation<pcl::PointXYZ, pcl::PointXYZ>);
+            corr_est->setInputSource(currentScan);
+            corr_est->setInputTarget(hypothesis_[i]);
+            pcl::Correspondences corr_map;
+            corr_est->determineReciprocalCorrespondences(corr_map, 0.05);
+
+            icp.setCorrespondenceEstimation(corr_est);
+            icp.setUseReciprocalCorrespondences(true);
 
             // Set the max correspondence distance to 5cm (e.g., correspondences with higher distances will be ignored)
             icp.setMaxCorrespondenceDistance(0.05);
@@ -475,10 +484,12 @@ private:
             if (hypothesisIDs_[i] == (current_scan_index - 1))
             {
                 Tktokplus1 = icp.getFinalTransformation();
+                getICPCov(cloud_source_aligned, hypothesis_[i], Tktokplus1, corr_map);
             }
             else
             {
                 finalTF = icp.getFinalTransformation();
+                getICPCov(cloud_source_aligned, hypothesis_[i], finalTF, corr_map);
             }
 
             if (icp.hasConverged())
@@ -512,6 +523,39 @@ private:
         };
         return transformations;
     };
+
+    void getICPCov(const pcl::PointCloud<pcl::PointXYZ>::Ptr &aligned, const pcl::PointCloud<pcl::PointXYZ>::Ptr &target, Eigen::Matrix4f &finalTF, pcl::Correspondences &corr_map)
+    {
+
+        std::vector<int> data_idx;
+        std::vector<int> model_idx;
+
+        pcl::Correspondence temp1;
+        for (int i = 0; i < corr_map.size(); i++)
+        {
+            temp1 = corr_map[i];
+            data_idx.push_back(temp1.index_query);
+            model_idx.push_back(temp1.index_match);
+        }
+
+        Eigen::MatrixXd ICP_COV(6, 6);
+        ICP_COV = Eigen::MatrixXd::Zero(6, 6);
+
+        pcl::PointCloud<pcl::PointXYZ> data_pi;
+        pcl::PointCloud<pcl::PointXYZ> model_qi;
+
+        pcl::copyPointCloud(*aligned, data_idx, data_pi);
+        pcl::copyPointCloud(*target, model_idx, model_qi);
+
+        calculate_ICP_COV(data_pi, model_qi, finalTF, ICP_COV);
+
+        ROS_INFO_STREAM("ICP Covariance: " << ICP_COV);
+
+        // Add covariance in covariances_
+        std::vector<double> cov_vec{ICP_COV(0,0), ICP_COV(0,1),ICP_COV(0,3),ICP_COV(1,0),ICP_COV(1,1),ICP_COV(1,3),ICP_COV(3,0),ICP_COV(3,1),ICP_COV(3,3)};
+
+        covariances_.push_back(cov_vec);
+    }
 
     void savePointcloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &source, const pcl::PointCloud<pcl::PointXYZ>::Ptr &target, const pcl::PointCloud<pcl::PointXYZ>::Ptr &aligned)
     {
@@ -610,14 +654,14 @@ private:
         tfArray_msg.transforms.assign(transforms.begin(), transforms.end());
 
         // TODO: Adding ICP covariances into the msg
-        // std::vector<std::shared_ptr<std_msgs::Float64MultiArray>> covarianceMessages;
+        std::vector<std_msgs::Float64MultiArray> covarianceMessages;
 
-        // for (const auto& cov : covariances){
-        //     std_msgs::Float64MultiArray covarianceMsg;
-        //     covarianceMsg.data.assign(cov.begin(), cov.end());
-        //     covarianceMessages.push_back(std::make_shared<std_msgs::Float64MultiArray>(covarianceMsg));
-        // }
-        // tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
+        for (const auto& cov : covariances){
+            std_msgs::Float64MultiArray covarianceMsg;
+            covarianceMsg.data.assign(cov.begin(), cov.end());
+            covarianceMessages.push_back(covarianceMsg);
+        }
+        tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
 
         tfArray_msg.keyframe = current_scan_odom_;
 
