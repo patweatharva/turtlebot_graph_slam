@@ -435,7 +435,7 @@ void calculate_ICP_COV(pcl::PointCloud<pcl::PointXYZ> &data_pi, pcl::PointCloud<
     }
 
     Eigen::MatrixXd cov_z(6 * n, 6 * n);
-    cov_z = 0.01 * Eigen::MatrixXd::Identity(6 * n, 6 * n);
+    cov_z = 0.1 * Eigen::MatrixXd::Identity(6 * n, 6 * n);
 
     ICP_COV = d2J_dX2.inverse() * d2J_dZdX * cov_z * d2J_dZdX.transpose() * d2J_dX2.inverse();
 

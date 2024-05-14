@@ -498,10 +498,10 @@ private:
                 ROS_INFO("ICP Fitness score --- %f", meanSquaredDistance);
 
                 // For checking scan Matching
-                // if (current_scan_index == 2)
-                // {
-                //     savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned);
-                // };
+                if (current_scan_index < 10)
+                {
+                    savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned , std::to_string(hypothesisIDs_[i]), std::to_string(current_scan_index));
+                };
 
                 if (meanSquaredDistance <= 1.5)
                 {
@@ -552,19 +552,19 @@ private:
         ROS_INFO_STREAM("ICP Covariance: " << ICP_COV);
 
         // Add covariance in covariances_
-        std::vector<double> cov_vec{ICP_COV(0,0), ICP_COV(0,1),ICP_COV(0,3),ICP_COV(1,0),ICP_COV(1,1),ICP_COV(1,3),ICP_COV(3,0),ICP_COV(3,1),ICP_COV(3,3)};
+        std::vector<double> cov_vec{ICP_COV(0, 0), ICP_COV(0, 1), ICP_COV(0, 3), ICP_COV(1, 0), ICP_COV(1, 1), ICP_COV(1, 3), ICP_COV(3, 0), ICP_COV(3, 1), ICP_COV(3, 3)};
 
         covariances_.push_back(cov_vec);
     }
 
-    void savePointcloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &source, const pcl::PointCloud<pcl::PointXYZ>::Ptr &target, const pcl::PointCloud<pcl::PointXYZ>::Ptr &aligned)
+    void savePointcloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &source, const pcl::PointCloud<pcl::PointXYZ>::Ptr &target, const pcl::PointCloud<pcl::PointXYZ>::Ptr &aligned, const std::string &target_id, const std::string &source_id)
     {
         // Get the path to the current ROS package
         std::string packagePath = ros::package::getPath("turtlebot_graph_slam");
         std::string directory = "/pcl_viz/";
-        pcl::io::savePCDFileASCII(packagePath + directory + "source.pcd", *source);
-        pcl::io::savePCDFileASCII(packagePath + directory + "target.pcd", *target);
-        pcl::io::savePCDFileASCII(packagePath + directory + "aligned.pcd", *aligned);
+        pcl::io::savePCDFileASCII(packagePath + directory + source_id + "-"+ target_id + "source.pcd", *source);
+        pcl::io::savePCDFileASCII(packagePath + directory + source_id + "-"+ target_id + "target.pcd", *target);
+        pcl::io::savePCDFileASCII(packagePath + directory + source_id + "-"+ target_id + "aligned.pcd", *aligned);
     };
 
     void registerPointcloudinWorld(const pcl::PointCloud<pcl::PointXYZ>::Ptr &currentScan)
@@ -653,15 +653,16 @@ private:
         turtlebot_graph_slam::tfArray tfArray_msg;
         tfArray_msg.transforms.assign(transforms.begin(), transforms.end());
 
-        // TODO: Adding ICP covariances into the msg
-        std::vector<std_msgs::Float64MultiArray> covarianceMessages;
+        // // TODO: Adding ICP covariances into the msg
+        // std::vector<std_msgs::Float64MultiArray> covarianceMessages;
 
-        for (const auto& cov : covariances){
-            std_msgs::Float64MultiArray covarianceMsg;
-            covarianceMsg.data.assign(cov.begin(), cov.end());
-            covarianceMessages.push_back(covarianceMsg);
-        }
-        tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
+        // for (const auto &cov : covariances)
+        // {
+        //     std_msgs::Float64MultiArray covarianceMsg;
+        //     covarianceMsg.data.assign(cov.begin(), cov.end());
+        //     covarianceMessages.push_back(covarianceMsg);
+        // }
+        // tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
 
         tfArray_msg.keyframe = current_scan_odom_;
 

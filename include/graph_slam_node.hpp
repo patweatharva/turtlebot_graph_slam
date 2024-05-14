@@ -307,8 +307,10 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     tf::Quaternion qt(scan_msg->transforms[i].transform.rotation.x, scan_msg->transforms[i].transform.rotation.y, scan_msg->transforms[i].transform.rotation.z, scan_msg->transforms[i].transform.rotation.w);
                     Pose2 scan_pose(scan_msg->transforms[i].transform.translation.x, scan_msg->transforms[i].transform.translation.y, tf::getYaw(qt));
 
-                    std::cout << "odometry pose - " << odometry << "  scan pose  " << scan_pose << std::endl;
-
+                    if (i == 0)
+                    {
+                        std::cout << "odometry pose - " << odometry << "  scan pose  " << scan_pose << std::endl;
+                    }
                     int scan_match_with_frame = std::stoi(scan_msg->transforms[i].header.frame_id);
 
                     // add initial estimates composing logic
@@ -321,8 +323,14 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                         graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
                     }
 
+                    // if (scan_msg->covariances[i].data[0] > 1.0)
+                    // {
+                    //     ROS_ERROR_STREAM("Scan skipped in between ID " << index_ << "and " << scan_match_with_frame);
+                    //     continue;
+                    // }
+
                     // Add scan matching factor
-                    if (scan_msg->covariances.empty() || scan_msg->covariances[i].data.size()!=9)
+                    if (scan_msg->covariances.empty() || scan_msg->covariances[i].data.size() != 9 || std::isnan(scan_msg->covariances[i].data[0]))
                     {
                         auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.09, 0.09, 0.08));
                         graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(scan_match_with_frame), X(index_), scan_pose, icp_noise_model);
@@ -337,11 +345,11 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
 
                         // Initialize Matrix33 with the data
                         Matrix33 scan_cov;
-                        scan_cov<< covarianceData[0],covarianceData[1],covarianceData[2],
-                                    covarianceData[3],covarianceData[4],covarianceData[5],
-                                    covarianceData[6],covarianceData[7],covarianceData[8];
+                        scan_cov << covarianceData[0], covarianceData[1], covarianceData[2],
+                            covarianceData[3], covarianceData[4], covarianceData[5],
+                            covarianceData[6], covarianceData[7], covarianceData[8];
 
-                        graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), scan_pose, noiseModel::Diagonal::Covariance(scan_cov));
+                        graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(scan_match_with_frame), X(index_), scan_pose, noiseModel::Diagonal::Covariance(scan_cov));
                     }
                 }
             }
@@ -368,11 +376,11 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
 
                 // Printing the results on console
                 // Marginals marg(*graph_, results_);
-                for (int i = 0; i < results_.size(); i++)
-                {
-                    ROS_INFO_STREAM("Keyframe number " << i << " Pose: - " << results_.at<Pose2>(X(i)));
-                    // ROS_INFO_STREAM("Keyframe number " << i << " Covariance: - \n" << marg.marginalCovariance(X(i)));
-                }
+                // for (int i = 0; i < results_.size(); i++)
+                // {
+                //     // ROS_INFO_STREAM("Keyframe number " << i << " Pose: - " << results_.at<Pose2>(X(i)));
+                //     // ROS_INFO_STREAM("Keyframe number " << i << " Covariance: - \n" << marg.marginalCovariance(X(i)));
+                // }
                 // publish graph results
                 publishResults();
             }
