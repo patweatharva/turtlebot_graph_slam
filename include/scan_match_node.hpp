@@ -207,8 +207,8 @@ private:
             try
             {
                 ros::Time start_time_ = ros::Time::now();
-                // projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_in, listener_);
-                projector_.projectLaser(*scan,cloud_in);
+                projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_in, listener_);
+                // projector_.projectLaser(*scan,cloud_in);
 
                 current_scan_odom_ = current_odom_;
                 current_scan_odom_.header.frame_id = std::to_string(current_scan_index);

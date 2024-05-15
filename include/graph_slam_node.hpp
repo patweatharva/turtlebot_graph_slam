@@ -316,7 +316,7 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     // add initial estimates composing logic
                     if (i == 0)
                     {
-                        current_pose_ = current_pose_.compose(odometry);
+                        current_pose_ = current_pose_.compose(scan_pose);
                         initial_estimates_.insert(X(index_), current_pose_);
 
                         // add odom factor to the graph
