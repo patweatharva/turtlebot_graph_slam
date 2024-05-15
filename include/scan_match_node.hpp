@@ -119,11 +119,13 @@ public:
     // Initialising listener transform
     tf::TransformListener listener_;
 
-    message_filters::Subscriber<sensor_msgs::LaserScan> laser_sub_;
-    tf::MessageFilter<sensor_msgs::LaserScan> laser_notifier_;
+    // message_filters::Subscriber<sensor_msgs::LaserScan> laser_sub_;
+    // tf::MessageFilter<sensor_msgs::LaserScan> laser_notifier_;
 
     // Subsciber for optimized poses from graph SLAM
     ros::Subscriber op_keyframe_sub_;
+
+    ros::Subscriber laser_sub_;
 
     // tf::TransformBroadcaster keyframe_br_;
 
@@ -150,8 +152,9 @@ public:
     Eigen::Matrix4f Tktokplus1 = Eigen::Matrix4f::Identity();
     Eigen::Matrix4f Twtokplus1 = Eigen::Matrix4f::Identity();
 
-    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), laser_sub_(nh, "/turtlebot/kobuki/sensors/rplidar", 1), laser_notifier_(laser_sub_, listener_, "turtlebot/kobuki/base_footprint", 1), client_(nh.serviceClient<turtlebot_graph_slam::ResetFilter>("ResetFilter")), client_octomap_(nh.serviceClient<std_srvs::Empty>("/octomap_server/reset"))
+    ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), client_(nh.serviceClient<turtlebot_graph_slam::ResetFilter>("ResetFilter")), client_octomap_(nh.serviceClient<std_srvs::Empty>("/octomap_server/reset"))
     {
+        laser_sub_ = nh.subscribe("/turtlebot/kobuki/sensors/rplidar",10, &ScanHandler::scanCallback, this);
 
         // Initialize subscribers
         odom_sub_ = nh.subscribe("/odom", 10, &ScanHandler::odometryCallback, this);
@@ -164,9 +167,11 @@ public:
         nh_.getParam("/graphSLAM/saveWorldMap", saveWorldMap_);
 
         // Laser notifiers for the scans
-        laser_notifier_.registerCallback(boost::bind(&ScanHandler::scanCallback, this, _1));
-        laser_notifier_.setTolerance(ros::Duration(0.01));
-        lastScanTime_ = ros::Time::now();
+        // laser_notifier_.registerCallback(boost::bind(&ScanHandler::scanCallback, this, _1));
+        // laser_notifier_.setTolerance(ros::Duration(0.01));
+        // lastScanTime_ = ros::Time::now();
+
+
     };
 
     void storePointCloudandKeyframe(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const geometry_msgs::TransformStamped &keyframe)
@@ -202,11 +207,15 @@ private:
             try
             {
                 ros::Time start_time_ = ros::Time::now();
-                projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_in, listener_);
+                // projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_in, listener_);
+                projector_.projectLaser(*scan,cloud_in);
 
                 current_scan_odom_ = current_odom_;
                 current_scan_odom_.header.frame_id = std::to_string(current_scan_index);
                 current_scan_odom_.child_frame_id = std::to_string(current_scan_index + 1);
+
+                ROS_ERROR_STREAM("SCAN TIME DIFFERENCE"<<  (current_scan_odom_.header.stamp - scan->header.stamp).toSec());
+                // ROS_ERROR_STREAM("SCAN Heading DIFFERENCE"<<  (current_scan_odom_.pose.pose.orientation. - scan->header.stamp).toSec());
 
                 odomtoTF(current_scan_odom_, current_key_frame);
 
@@ -498,10 +507,10 @@ private:
                 ROS_INFO("ICP Fitness score --- %f", meanSquaredDistance);
 
                 // For checking scan Matching
-                if (current_scan_index < 10)
-                {
-                    savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned , std::to_string(hypothesisIDs_[i]), std::to_string(current_scan_index));
-                };
+                // if (current_scan_index < 10)
+                // {
+                //     savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned , std::to_string(hypothesisIDs_[i]), std::to_string(current_scan_index));
+                // };
 
                 if (meanSquaredDistance <= 1.5)
                 {
