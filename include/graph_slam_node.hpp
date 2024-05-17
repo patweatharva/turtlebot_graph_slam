@@ -331,11 +331,11 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     }
                     else
                     {
-                        // if (scan_msg->covariances[i].data[0] > 1.0)
-                        // {
-                        //     ROS_ERROR_STREAM("Scan skipped in between ID " << index_ << "and " << scan_match_with_frame);
-                        //     continue;
-                        // }
+                        if (scan_msg->covariances[i].data[0] > 1.0)
+                        {
+                            ROS_ERROR_STREAM("Scan skipped in between ID " << index_ << "and " << scan_match_with_frame);
+                            continue;
+                        }
                         
                         std_msgs::Float64MultiArray covarianceArray = scan_msg->covariances[i];
 

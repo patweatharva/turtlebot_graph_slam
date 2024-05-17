@@ -35,6 +35,8 @@ class EKF:
         self.x_map_op     = np.zeros((3, 1))        # Optimized Robot pose in the map frame
         self.x_frame_k_op = np.zeros((3, 1))        # optimized k frame pose in the map frame
 
+        self.initial_current_pose = None
+
         self.mode         = MODE
 
         # PUBLISHERS   
@@ -46,13 +48,15 @@ class EKF:
         self.odom_sub               = rospy.Subscriber(SUB_ODOM_TOPIC, JointState, self.get_odom) 
 
         if self.mode == "SIL":
-            self.ground_truth_sub   = rospy.Subscriber(SUB_GROUND_TRUTH_TOPIC, Odometry, self.get_ground_truth) 
+            self.ground_truth_sub   = rospy.Subscriber(SUB_GROUND_TRUTH_TOPIC, Odometry, self.get_ground_truth)
+            self.ground_truth_pub = rospy.Publisher(PUB_GROUND_TRUTH_TOPIC, Odometry, queue_size=10)
         elif self.mode == "HIL":
             self.IMU_sub            = rospy.Subscriber(SUB_IMU_TOPIC, Imu, self.get_IMU) 
 
 
         self.optimized_pose_sub = rospy.Subscriber(SUB_OPTIMIZED_TOPIC, keyframe, self.update_optimized_pose)
         self.optimized_odom_pub = rospy.Publisher(PUB_OPTIMIZED_TOPIC, Odometry, queue_size=1)
+        
 
         self.odom   = OdomData(Qk)
         self.mag    = Magnetometer(Rk)
@@ -85,7 +89,10 @@ class EKF:
                                                             odom.pose.pose.orientation.w])
         
         self.current_pose = np.array([odom.pose.pose.position.x, odom.pose.pose.position.y, yaw])
-
+        
+        if self.initial_current_pose is None:
+            self.initial_current_pose = Pose3D(self.current_pose.copy().reshape(3, 1))
+        
         # Get heading as a measurement to update filter
         if self.mag.read_magnetometer(yaw-self.yawOffset) and self.ekf_filter is not None:
             self.ekf_filter.gotNewHeadingData()
@@ -99,7 +106,7 @@ class EKF:
         
         yaw = -yaw      # Imu in the turtlebot is NEU while I'm using NED
 
-        self.current_pose = np.array([0.0, 0.0, yaw])
+        self.current_pose = np.array([self.current_pose[0], self.current_pose[1], yaw])
 
         # Get heading as a measurement to update filter
         if self.mag.read_magnetometer(yaw-self.yawOffset) and self.ekf_filter is not None:
@@ -147,7 +154,10 @@ class EKF:
             # Publish rviz
             self.odom_path_pub(timestamp)
             self.optimized_odom_path_pub(timestamp)
-
+            
+            if self.mode == "SIL" and self.initial_current_pose is not None:
+                self.ground_tuth_odom_pub(timestamp)
+            
             self.publish_tf_map(timestamp)
             
             self.poseArray.header.stamp = timestamp
@@ -265,6 +275,32 @@ class EKF:
 
         # tf.TransformBroadcaster().sendTransform((float(self.x_map_op[0, 0]), float(self.x_map_op[1, 0]), 0.0), quaternion, timestamp, odom.child_frame_id, odom.header.frame_id)
 
+    def ground_tuth_odom_pub(self, timestamp):
+        
+        initial_tf = Pose3D.ominus(self.initial_current_pose)
+        ground_truth_pose_map = Pose3D.oplus(initial_tf, self.current_pose.copy().reshape(3, 1))
+        
+        # Transform theta from euler to quaternion
+        quaternion = tf.transformations.quaternion_from_euler(0, 0, float((ground_truth_pose_map[2, 0])))  # Convert euler angles to quaternion
+
+        # Publish predicted odom
+        odom = Odometry()
+        odom.header.stamp = timestamp
+        odom.header.frame_id = FRAME_MAP
+        odom.child_frame_id = FRAME_PREDICTED_BASE
+
+
+        odom.pose.pose.position.x = ground_truth_pose_map[0]
+        odom.pose.pose.position.y = ground_truth_pose_map[1]
+
+        odom.pose.pose.orientation.x = quaternion[0]
+        odom.pose.pose.orientation.y = quaternion[1]
+        odom.pose.pose.orientation.z = quaternion[2]
+        odom.pose.pose.orientation.w = quaternion[3]
+        
+        self.ground_truth_pub.publish(odom)
+    
+    
     def publish_tf_map(self, timestamp):
         x_map = self.x_map.copy()
 
