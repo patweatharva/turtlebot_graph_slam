@@ -5,16 +5,11 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "ROS: Launch",
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
             "request": "launch",
-            "target": "/home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/launch/test.launch",
-            "launch": [
-                "rviz",
-                "gz",
-                "gzclient",
-                "gzserver"
-            ],
-            "type": "ros"
+            "program": "${file}",
+            "console": "integratedTerminal"
         }
     ]
 }

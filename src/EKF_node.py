@@ -16,6 +16,7 @@ from untils.Magnetometer import *
 
 from turtlebot_graph_slam.srv import ResetFilter, ResetFilterResponse
 
+from turtlebot_graph_slam.msg import keyframe
 
 class EKF:
     def __init__(self) -> None:
@@ -30,6 +31,9 @@ class EKF:
         self.ekf_filter   = None
         self.x_map        = np.zeros((3, 1))        # Robot pose in the map frame
         self.x_frame_k    = np.zeros((3, 1))        # k frame pose in the map frame
+        
+        self.x_map_op     = np.zeros((3, 1))        # Optimized Robot pose in the map frame
+        self.x_frame_k_op = np.zeros((3, 1))        # optimized k frame pose in the map frame
 
         self.mode         = MODE
 
@@ -46,9 +50,14 @@ class EKF:
         elif self.mode == "HIL":
             self.IMU_sub            = rospy.Subscriber(SUB_IMU_TOPIC, Imu, self.get_IMU) 
 
+
+        self.optimized_pose_sub = rospy.Subscriber(SUB_OPTIMIZED_TOPIC, keyframe, self.update_optimized_pose)
+        self.optimized_odom_pub = rospy.Publisher(PUB_OPTIMIZED_TOPIC, Odometry, queue_size=1)
+
         self.odom   = OdomData(Qk)
         self.mag    = Magnetometer(Rk)
         self.poseArray = PoseArray()
+        self.poseArrayOptimized = PoseArray()
 
         # if self.mode == "SIL":
         # Move
@@ -110,11 +119,34 @@ class EKF:
         if self.ekf_filter is not None:
             # Run EKF Filter
             self.xk, self.Pk = self.ekf_filter.Localize(self.xk, self.Pk)
-
-            self.x_map       = Pose3D.oplus(self.x_frame_k, self.xk)
+            x_map            = Pose3D.oplus(self.x_frame_k, self.xk)    
+            self.x_map       = np.array([x_map[0], x_map[1], x_map[2]]).reshape(3, 1)
+            
+            # Compounding the optimized pose
+            if len(self.poseArrayOptimized.poses) > 0:
+                last_x_frame_pose = self.poseArrayOptimized.poses[-1]
+                
+                
+                _,_,last_frame_yaw = tf.transformations.euler_from_quaternion([last_x_frame_pose.orientation.x, 
+                                                                last_x_frame_pose.orientation.y, 
+                                                                last_x_frame_pose.orientation.z, 
+                                                                last_x_frame_pose.orientation.w])
+                
+                # print(type(last_x_frame_pose.position.x), type(last_x_frame_pose.position.y), type(last_frame_yaw))
+                # print(last_x_frame_pose.position.x, last_x_frame_pose.position.y, last_frame_yaw)
+  
+                self.x_frame_k_op =  np.array([float(last_x_frame_pose.position.x), 
+                                               float(last_x_frame_pose.position.y),
+                                               float(last_frame_yaw)]).reshape(3, 1)
+            else:
+                self.x_frame_k_op = self.x_frame_k.copy()
+            
+            x_map_op    = Pose3D.oplus(self.x_frame_k_op, self.xk)
+            self.x_map_op    = np.array([x_map_op[0], x_map_op[1], x_map_op[2]]).reshape(3, 1)
 
             # Publish rviz
             self.odom_path_pub(timestamp)
+            self.optimized_odom_path_pub(timestamp)
 
             self.publish_tf_map(timestamp)
             
@@ -150,9 +182,21 @@ class EKF:
         pose.orientation.w = quaternion[3]
 
         self.poseArray.poses.append(pose)
+        self.poseArrayOptimized.poses.append(pose)
 
         return ResetFilterResponse(request.reset_filter_requested)
     
+    
+    def update_optimized_pose(self, keyframe):
+        num_of_poses_present_already = len(self.poseArrayOptimized.poses)
+        if num_of_poses_present_already >= len(keyframe.keyframePoses.poses):
+            for i in range(len(keyframe.keyframePoses.poses)):
+                self.poseArrayOptimized.poses[i] = keyframe.keyframePoses.poses[i]
+        else:
+            for i in range(len(self.poseArrayOptimized.poses)):
+                self.poseArrayOptimized.poses[i] = keyframe.keyframePoses.poses[i]
+            
+            
     # Publish Filter results
     def odom_path_pub(self, timestamp):
         # Transform theta from euler to quaternion
@@ -187,6 +231,39 @@ class EKF:
 
         tf.TransformBroadcaster().sendTransform((float(self.xk[0, 0]), float(self.xk[1, 0]), 0.0), quaternion, timestamp, odom.child_frame_id, odom.header.frame_id)
             
+
+    def optimized_odom_path_pub(self, timestamp):
+        # Transform theta from euler to quaternion
+        quaternion = tf.transformations.quaternion_from_euler(0, 0, float((self.x_map_op[2, 0])))  # Convert euler angles to quaternion
+
+        # Publish predicted odom
+        odom = Odometry()
+        odom.header.stamp = timestamp
+        odom.header.frame_id = FRAME_MAP
+        odom.child_frame_id = FRAME_PREDICTED_BASE
+
+
+        odom.pose.pose.position.x = self.x_map_op[0]
+        odom.pose.pose.position.y = self.x_map_op[1]
+
+        odom.pose.pose.orientation.x = quaternion[0]
+        odom.pose.pose.orientation.y = quaternion[1]
+        odom.pose.pose.orientation.z = quaternion[2]
+        odom.pose.pose.orientation.w = quaternion[3]
+
+        # odom.pose.covariance = list(np.array([[self.Pk[0, 0], self.Pk[0, 1], 0, 0, 0, self.Pk[0, 2]],
+        #                         [self.Pk[1, 0], self.Pk[1,1], 0, 0, 0, self.Pk[1, 2]],
+        #                         [0, 0, 0, 0, 0, 0],
+        #                         [0, 0, 0, 0, 0, 0],
+        #                         [0, 0, 0, 0, 0, 0],
+        #                         [self.Pk[2, 0], self.Pk[2, 1], 0, 0, 0, self.Pk[2, 2]]]).flatten())
+
+        # odom.twist.twist.linear.x = self.v
+        # odom.twist.twist.angular.z = self.w
+
+        self.optimized_odom_pub.publish(odom)
+
+        # tf.TransformBroadcaster().sendTransform((float(self.x_map_op[0, 0]), float(self.x_map_op[1, 0]), 0.0), quaternion, timestamp, odom.child_frame_id, odom.header.frame_id)
 
     def publish_tf_map(self, timestamp):
         x_map = self.x_map.copy()

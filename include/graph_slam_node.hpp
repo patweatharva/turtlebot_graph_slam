@@ -323,12 +323,6 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                         graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
                     }
 
-                    // if (scan_msg->covariances[i].data[0] > 1.0)
-                    // {
-                    //     ROS_ERROR_STREAM("Scan skipped in between ID " << index_ << "and " << scan_match_with_frame);
-                    //     continue;
-                    // }
-
                     // Add scan matching factor
                     if (scan_msg->covariances.empty() || scan_msg->covariances[i].data.size() != 9 || std::isnan(scan_msg->covariances[i].data[0]))
                     {
@@ -337,6 +331,12 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     }
                     else
                     {
+                        // if (scan_msg->covariances[i].data[0] > 1.0)
+                        // {
+                        //     ROS_ERROR_STREAM("Scan skipped in between ID " << index_ << "and " << scan_match_with_frame);
+                        //     continue;
+                        // }
+                        
                         std_msgs::Float64MultiArray covarianceArray = scan_msg->covariances[i];
 
                         // Convert the data to a std::vector<double>

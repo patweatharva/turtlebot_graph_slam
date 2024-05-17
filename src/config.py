@@ -1,5 +1,5 @@
 # Params
-MODE              = "HIL"
+MODE              = "SIL"
 FRAME_MAP         = "map"
 FRAME_BASE        = "turtlebot/kobuki/base_footprint"
 FRAME_PREDICTED_BASE = "turtlebot/kobuki/predicted_base_footprint"
@@ -11,6 +11,9 @@ PUB_ODOM_TOPIC          = "/odom"
 SUB_GROUND_TRUTH_TOPIC  = "/turtlebot/kobuki/odom_ground_truth"
 SUB_IMU_TOPIC           = "/turtlebot/kobuki/sensors/imu_data"
 SUB_ODOM_TOPIC          = "/turtlebot/joint_states"
+
+SUB_OPTIMIZED_TOPIC     = "/graphslam/optimizedposes"
+PUB_OPTIMIZED_TOPIC     = "/odom_optimized"
 
 SERVICE_RESET_FILTER    = "ResetFilter"
 
