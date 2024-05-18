@@ -663,15 +663,15 @@ private:
         tfArray_msg.transforms.assign(transforms.begin(), transforms.end());
 
         // // TODO: Adding ICP covariances into the msg
-        // std::vector<std_msgs::Float64MultiArray> covarianceMessages;
+        std::vector<std_msgs::Float64MultiArray> covarianceMessages;
 
-        // for (const auto &cov : covariances)
-        // {
-        //     std_msgs::Float64MultiArray covarianceMsg;
-        //     covarianceMsg.data.assign(cov.begin(), cov.end());
-        //     covarianceMessages.push_back(covarianceMsg);
-        // }
-        // tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
+        for (const auto &cov : covariances)
+        {
+            std_msgs::Float64MultiArray covarianceMsg;
+            covarianceMsg.data.assign(cov.begin(), cov.end());
+            covarianceMessages.push_back(covarianceMsg);
+        }
+        tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
 
         tfArray_msg.keyframe = current_scan_odom_;
 
