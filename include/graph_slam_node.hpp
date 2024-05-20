@@ -1,11 +1,14 @@
 #ifndef GRAPH_SLAM_HANDLER_H
 #define GRAPH_SLAM_HANDLER_H
 
+// ROS related includes
 #include "ros/ros.h"
 #include "ros/package.h"
 
+// Eigen related includes
 #include <Eigen/Dense>
 
+// ROS message includes
 #include "nav_msgs/Odometry.h"
 #include <tf/transform_datatypes.h>
 #include <geometry_msgs/Quaternion.h>
@@ -30,9 +33,11 @@
 #include <gtsam/slam/dataset.h>
 #include <gtsam/slam/PriorFactor.h>
 
+// Custom message includes
 #include "turtlebot_graph_slam/tfArray.h"
 #include "turtlebot_graph_slam/keyframe.h"
 
+// Standard C++ includes
 #include <vector>
 #include <iostream>
 #include <string>

@@ -106,7 +106,11 @@ class EKF:
         
         yaw = -yaw      # Imu in the turtlebot is NEU while I'm using NED
 
-        self.current_pose = np.array([self.current_pose[0], self.current_pose[1], yaw])
+        if (self.mode == "SIL"):
+            self.current_pose = np.array([self.current_pose[0], self.current_pose[1], yaw])
+        else:
+            self.current_pose = np.array([0.0, 0.0, yaw])
+            
 
         # Get heading as a measurement to update filter
         if self.mag.read_magnetometer(yaw-self.yawOffset) and self.ekf_filter is not None:
