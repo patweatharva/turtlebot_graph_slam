@@ -26,6 +26,8 @@ find_package(catkin REQUIRED COMPONENTS
     pcl_ros
     std_srvs
     laser_geometry
+    tf2_ros
+    message_filters
 )
 
 find_package(PCL REQUIRED)
@@ -180,6 +182,7 @@ ${Boost_INCLUDE_DIRS}
 ## The recommended prefix ensures that target names across packages don't collide
 add_executable(graph_slam_node src/graph_slam_node.cpp)
 add_executable(scan_match_node src/scan_match_node.cpp)
+add_executable(laser_scan_to_point_cloud_node src/laser_scan_to_point_cloud_node.cpp)
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -206,6 +209,9 @@ target_link_libraries(scan_match_node
   ${GTSAM_LIBRARIES}
   gtsam
 )
+target_link_libraries(laser_scan_to_point_cloud_node
+  ${catkin_LIBRARIES}
+)
 
 #############
 ## Install ##
@@ -223,7 +229,7 @@ target_link_libraries(scan_match_node
 
 ## Mark executables for installation
 ## See http://docs.ros.org/melodic/api/catkin/html/howto/format1/building_executables.html
-install(TARGETS graph_slam_node scan_match_node
+install(TARGETS graph_slam_node scan_match_node laser_scan_to_point_cloud_node
         RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
 

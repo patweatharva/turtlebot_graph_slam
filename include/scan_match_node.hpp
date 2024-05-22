@@ -109,6 +109,7 @@ class ScanHandler
 public:
     ros::NodeHandle &nh_;
     ros::Publisher pointcloud_pub_ = this->nh_.advertise<sensor_msgs::PointCloud2>("/pc", 10);
+    ros::Publisher pointcloud_pub_map_ = this->nh_.advertise<sensor_msgs::PointCloud2>("/pc_map", 10);
     ros::Publisher keyframe_pub_ = this->nh_.advertise<geometry_msgs::PoseArray>("/keyframes", 10);
     ros::Publisher scan_match_pub_ = this->nh_.advertise<turtlebot_graph_slam::tfArray>("/scanmatches", 10);
     ros::Publisher ellipse_pub_ = this->nh_.advertise<visualization_msgs::MarkerArray>("ellipse_markers", 1000);
@@ -204,11 +205,16 @@ private:
         if (time_trigger_ && odom_trigger_)
         {
             sensor_msgs::PointCloud2 cloud_in;
+            sensor_msgs::PointCloud2 cloud_out;
             try
             {
                 ros::Time start_time_ = ros::Time::now();
                 projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_in, listener_);
+                // projector_.transformLaserScanToPointCloud("map", *scan, cloud_out, listener_);
                 // projector_.projectLaser(*scan,cloud_in);
+
+                // Publishing Obtained Pointcloud
+                // pointcloud_pub_map_.publish(cloud_out);
 
                 current_scan_odom_ = current_odom_;
                 current_scan_odom_.header.frame_id = std::to_string(current_scan_index);
@@ -248,8 +254,6 @@ private:
                 current_scan_index++;
                 ROS_INFO("---Pointcloud (ID - %d) Received and Stored---", current_scan_index);
 
-                // Publishing Obtained Pointcloud
-                // pointcloud_pub_.publish(cloud_in);
 
                 if (current_scan_index > 0)
                 {
@@ -313,7 +317,7 @@ private:
 
         double yaw = tf::getYaw(q);
 
-        if (fabs(yaw) > M_PI / 20 || fabs(current_odom_.pose.pose.position.x) >= 0.1 || fabs(current_odom_.pose.pose.position.y) >= 0.1)
+        if (fabs(yaw) > M_PI / 20 || fabs(current_odom_.pose.pose.position.x) >= 0.5 || fabs(current_odom_.pose.pose.position.y) >= 0.5)
         {
             odom_trigger_ = true;
         }
@@ -377,7 +381,7 @@ private:
                 std::pow(TMaptoCurrent(2, 3) - keyframes_[i](2, 3), 2));
 
             // Compare distance with thresholdOdometry_
-            if (distance < thresholdOdometry_ && hypothesisIDs_.size() <= 6)
+            if (distance < thresholdOdometry_ && hypothesisIDs_.size() <= 7)
             {
                 hypothesis_.push_back(storedPointClouds_[i]);
                 hypothesisIDs_.push_back(i);
@@ -507,10 +511,10 @@ private:
                 ROS_INFO("ICP Fitness score --- %f", meanSquaredDistance);
 
                 // For checking scan Matching
-                // if (current_scan_index < 10)
-                // {
-                //     savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned , std::to_string(hypothesisIDs_[i]), std::to_string(current_scan_index));
-                // };
+                if (current_scan_index < 5)
+                {
+                    savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned , std::to_string(hypothesisIDs_[i]), std::to_string(current_scan_index));
+                };
 
                 if (meanSquaredDistance <= 1.5)
                 {
@@ -663,15 +667,15 @@ private:
         tfArray_msg.transforms.assign(transforms.begin(), transforms.end());
 
         // // TODO: Adding ICP covariances into the msg
-        std::vector<std_msgs::Float64MultiArray> covarianceMessages;
+        // std::vector<std_msgs::Float64MultiArray> covarianceMessages;
 
-        for (const auto &cov : covariances)
-        {
-            std_msgs::Float64MultiArray covarianceMsg;
-            covarianceMsg.data.assign(cov.begin(), cov.end());
-            covarianceMessages.push_back(covarianceMsg);
-        }
-        tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
+        // for (const auto &cov : covariances)
+        // {
+        //     std_msgs::Float64MultiArray covarianceMsg;
+        //     covarianceMsg.data.assign(cov.begin(), cov.end());
+        //     covarianceMessages.push_back(covarianceMsg);
+        // }
+        // tfArray_msg.covariances.assign(covarianceMessages.begin(), covarianceMessages.end());
 
         tfArray_msg.keyframe = current_scan_odom_;
 

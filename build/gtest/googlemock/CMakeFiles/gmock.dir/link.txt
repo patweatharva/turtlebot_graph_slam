@@ -1,0 +1,1 @@
+/usr/bin/g++ -fPIC -g  -shared -Wl,-soname,libgmockd.so -o ../lib/libgmockd.so CMakeFiles/gmock.dir/src/gmock-all.cc.o  -Wl,-rpath,/home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/build/gtest/lib ../lib/libgtestd.so -lpthread 

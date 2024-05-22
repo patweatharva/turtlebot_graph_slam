@@ -321,7 +321,7 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     // add initial estimates composing logic
                     if (i == 0)
                     {
-                        current_pose_ = current_pose_.compose(scan_pose);
+                        current_pose_ = current_pose_.compose(odometry);
                         initial_estimates_.insert(X(index_), current_pose_);
 
                         // add odom factor to the graph
@@ -331,7 +331,7 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                     // Add scan matching factor
                     if (scan_msg->covariances.empty() || scan_msg->covariances[i].data.size() != 9 || std::isnan(scan_msg->covariances[i].data[0]))
                     {
-                        auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.09, 0.09, 0.01));
+                        auto icp_noise_model = noiseModel::Diagonal::Sigmas(Vector3(0.005, 0.005, 0.001));
                         graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(scan_match_with_frame), X(index_), scan_pose, icp_noise_model);
                     }
                     else

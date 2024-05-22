@@ -1,0 +1,8 @@
+prefix=/usr/local
+
+Name: turtlebot_graph_slam
+Description: Description of turtlebot_graph_slam
+Version: 0.0.0
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib -lturtlebot_graph_slam
+Requires: roscpp std_msgs sensor_msgs pcl_ros message_runtime
