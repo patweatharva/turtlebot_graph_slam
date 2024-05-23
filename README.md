@@ -1,6 +1,6 @@
 # turtlebot_graph_slam
 
-This ROS package implements SLAM (Simultaneous Localization and Mapping) using Pose Graph Optimization with the help of Factor Graphs from GTSAM library for the Turtlebot2 robot. This package is designed in ROS noetic on ubuntu 20.04 machine. The package was desigen in [stonefish](https://github.com/patrykcieslak/stonefish) simulator using [Turtlebot2](https://bitbucket.org/udg_cirs/turtlebot_simulation/src/master/) Simulation Packages.
+This ROS package implements SLAM (Simultaneous Localization and Mapping) using Pose Graph Optimization with the help of Factor Graphs from GTSAM library for the Turtlebot2 robot.The package was designed in [stonefish](https://github.com/patrykcieslak/stonefish) simulator using [Turtlebot2](https://bitbucket.org/udg_cirs/turtlebot_simulation/src/master/) Simulation Packages. The package was tested on ROS Noetic running on Ubuntu 20.04 Machine.
 
 ## Overview
 Simultaneous Localization and Mapping (SLAM) is a critical challenge in robotics, where a robot concurrently builds or updates a map of an unknown environment and tracks its position within that environment. This work aims to implement a robust Simultaneous Localization and Mapping algorithm on a turtlebot platform using onboard sensors - 2D Lidar, Wheel Encoders, and Magnetometer compass. This study explores the implementation of online SLAM and full SLAM using factor graphs, specifically leveraging the Georgia Tech Smoothing and Mapping (GTSAM) library on a Turtlebot robot platform with the Robot Operating System (ROS). We describe the construction of the factor graph for SLAM, incorporating 2D Lidar scans and odometry data, and validate our approach through simulations and experiments in real world. Our study also incorporates the Closed form ICP covariance estimation method proposed in [here](https://ieeexplore.ieee.org/document/7153246). The Graph SLAM output, both with and without the proposed method, was recorded during real-world testing. Additionally, the impact of the keyframe triggering parameter was evaluated.
@@ -22,7 +22,7 @@ The turtlebot_graph_slam package has the following architecture:
 The architecture consists of several components:
 - **EKF Odometry Node**: This node is responsible for performing the Odometry using Extended Kalman Filter on encoder readings obtained from the wheels.
 - **Scan Matching Node**: This node is responsible for registering consecutive laser scans and estimating the robot's odometry using the Iterative Closest Point (ICP) algorithm.
-- **Graph SLAM Node**: This node hoses the code for adding the Scan registration and Odometry factors to the graph and optimizing using the Levenberg-Marquardt algorithm or the ISAM2 algorithm, depending on the value of the `Use_ISAM2` parameter.
+- **Graph SLAM Node**: This node houses the code for adding the Scan registration and Odometry factors to the graph and optimizing using the Levenberg-Marquardt algorithm or the ISAM2 algorithm, depending on the value of the `Use_ISAM2` parameter.
 - **Configuration Files**: The package includes several configuration files that define the parameters for the SLAM algorithm, the EKF odometry, the ICP algorithm, and other components.
 
 The package architecture is designed to provide a modular and flexible framework for SLAM on the Turtlebot2 robot. Each component can be customized or replaced to adapt to different requirements or sensor configurations as long as same data is added to the graph.
@@ -88,7 +88,7 @@ To build the turtlebot_graph_slam package, follow these steps:
 ## Usage
 
 ### IMPORTANT!!
-1. Before launching the files change which mode (SIL/HIL) is in use from the [src/config.py](/src/config.py) file and launch respective file using folloing instructions.
+1. Before launching the files change which mode (SIL/HIL) is in use from the [src/config.py](/src/config.py) file and launch respective file using following instructions.
 
 * SIL - Software in Loop when working in Simulator.
 * HIL - Hardware in Loop when working on real turtlebot robot.
@@ -108,12 +108,12 @@ If you are using the real turtlebot robot, you can launch the turtlebot_graph_sl
 ```
 $ roslaunch turtlebot_graph_slam env_graph_slam_HIL.launch
 ```
-Once the simulation is running, you can visualize the SLAM output using RViz. The graph SLAM starts optmization process after atleast two keyframes are added thus start moving the robot using the teleop package. You can use the following command to run the teleop node:
+Once the simulation is running, you can visualize the SLAM output using RViz. The graph SLAM starts optimization process after atleast two keyframes are added thus start moving the robot using the teleop package. You can use the following command to run the teleop node:
 ```
 rosrun teleop_twist_keyboard teleop_twist_keyboard.py
 ```
 
-If you don't have the teleop_twist_keyboard package installed, you can intall it from [here](http://wiki.ros.org/teleop_twist_keyboard)
+If you don't have the teleop_twist_keyboard package installed, you can install it from [here](http://wiki.ros.org/teleop_twist_keyboard)
 
 ## Parameters
 
@@ -156,7 +156,7 @@ The turtlebot_graph_slam package provides the following launch files:
     $ dot -Tpdf <input_file>.dot -o <output_file>.pdf
     ```
 
-4. You can also download plotjuggler to visualize the data in real time. You can download it from [here](https://github.com/facontidavide/PlotJuggler)
+4. You can also download PlotJuggler to visualize the data in real time. You can download it from [here](https://github.com/facontidavide/PlotJuggler)
 
 5. In the directory result_plots, you can find the plots generated by the SLAM algorithm. These plots include the ICP alignment before and after, the simulation testing results, and the real-world testing results.
 
