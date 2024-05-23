@@ -178,9 +178,6 @@ The turtlebot_graph_slam package provides the following launch files:
 <div align="center">
 <img src="result_plots/Untitled%20design.jpg" alt="Factor Graph" width="300"/><img src="result_plots/test_real_rviz_2.png" alt="Factor Graph" width="300"/>
 </div>
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more details.
 
 
 ### Lastly
