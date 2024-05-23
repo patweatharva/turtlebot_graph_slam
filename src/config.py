@@ -1,5 +1,5 @@
 # Params
-MODE              = "HIL" # "SIL" or "HIL"
+MODE              = "SIL" # "SIL" or "HIL"
 FRAME_MAP         = "map"
 FRAME_BASE        = "turtlebot/kobuki/base_footprint"
 FRAME_PREDICTED_BASE = "turtlebot/kobuki/predicted_base_footprint"

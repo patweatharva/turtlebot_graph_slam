@@ -317,7 +317,7 @@ private:
 
         double yaw = tf::getYaw(q);
 
-        if (fabs(yaw) > M_PI / 6 || fabs(current_odom_.pose.pose.position.x) >= 0.5 || fabs(current_odom_.pose.pose.position.y) >= 0.5)
+        if (fabs(yaw) > M_PI / 6 || fabs(current_odom_.pose.pose.position.x) >= (thresholdOdometry_/2) || fabs(current_odom_.pose.pose.position.y) >= (thresholdOdometry_/2))
         {
             odom_trigger_ = true;
         }
@@ -511,10 +511,10 @@ private:
                 ROS_INFO("ICP Fitness score --- %f", meanSquaredDistance);
 
                 // For checking scan Matching
-                if (current_scan_index < 5)
-                {
-                    savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned , std::to_string(hypothesisIDs_[i]), std::to_string(current_scan_index));
-                };
+                // if (current_scan_index < 5)
+                // {
+                //     savePointcloud(currentScan, hypothesis_[i], cloud_source_aligned , std::to_string(hypothesisIDs_[i]), std::to_string(current_scan_index));
+                // };
 
                 if (meanSquaredDistance <= 1.5)
                 {
