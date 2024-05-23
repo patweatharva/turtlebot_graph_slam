@@ -38,6 +38,11 @@ class EKF:
         self.initial_current_pose = None
 
         self.mode         = MODE
+        
+        self.odom   = OdomData(Qk)
+        self.mag    = Magnetometer(Rk)
+        self.poseArray = PoseArray()
+        self.poseArrayOptimized = PoseArray()
 
         # PUBLISHERS   
         self.key_frame_pub   = rospy.Publisher(PUB_KEYFRAME_DEADRECKONING_TOPIC, PoseArray, queue_size=10)
@@ -57,11 +62,9 @@ class EKF:
         self.optimized_pose_sub = rospy.Subscriber(SUB_OPTIMIZED_TOPIC, keyframe, self.update_optimized_pose)
         self.optimized_odom_pub = rospy.Publisher(PUB_OPTIMIZED_TOPIC, Odometry, queue_size=1)
         
+        self.dead_reckoning_pub = rospy.Publisher(PUB_DEAD_RECKONING_TOPIC, Odometry, queue_size=1)        
 
-        self.odom   = OdomData(Qk)
-        self.mag    = Magnetometer(Rk)
-        self.poseArray = PoseArray()
-        self.poseArrayOptimized = PoseArray()
+        
 
         # if self.mode == "SIL":
         # Move
@@ -158,6 +161,7 @@ class EKF:
             # Publish rviz
             self.odom_path_pub(timestamp)
             self.optimized_odom_path_pub(timestamp)
+            self.dead_reckoning_path_pub(timestamp)
             
             if self.mode == "SIL" and self.initial_current_pose is not None:
                 self.ground_tuth_odom_pub(timestamp)
@@ -204,9 +208,11 @@ class EKF:
     def update_optimized_pose(self, keyframe):
         num_of_poses_present_already = len(self.poseArrayOptimized.poses)
         if num_of_poses_present_already >= len(keyframe.keyframePoses.poses):
+            print("case 1")
             for i in range(len(keyframe.keyframePoses.poses)):
                 self.poseArrayOptimized.poses[i] = keyframe.keyframePoses.poses[i]
         else:
+            print("case 2")
             for i in range(len(self.poseArrayOptimized.poses)):
                 self.poseArrayOptimized.poses[i] = keyframe.keyframePoses.poses[i]
             
@@ -245,7 +251,29 @@ class EKF:
 
         tf.TransformBroadcaster().sendTransform((float(self.xk[0, 0]), float(self.xk[1, 0]), 0.0), quaternion, timestamp, odom.child_frame_id, odom.header.frame_id)
             
+    # Publish Filter results
+    def dead_reckoning_path_pub(self, timestamp):
+        # Transform theta from euler to quaternion
+        quaternion = tf.transformations.quaternion_from_euler(0, 0, float((self.x_map[2, 0])))  # Convert euler angles to quaternion
 
+        # Publish predicted odom
+        odom = Odometry()
+        odom.header.stamp = timestamp
+        odom.header.frame_id = FRAME_MAP
+        odom.child_frame_id = FRAME_DEAD_RECKONING_BASE
+
+
+        odom.pose.pose.position.x = self.x_map[0]
+        odom.pose.pose.position.y = self.x_map[1]
+
+        odom.pose.pose.orientation.x = quaternion[0]
+        odom.pose.pose.orientation.y = quaternion[1]
+        odom.pose.pose.orientation.z = quaternion[2]
+        odom.pose.pose.orientation.w = quaternion[3]
+
+
+        self.dead_reckoning_pub.publish(odom)    
+    
     def optimized_odom_path_pub(self, timestamp):
         # Transform theta from euler to quaternion
         quaternion = tf.transformations.quaternion_from_euler(0, 0, float((self.x_map_op[2, 0])))  # Convert euler angles to quaternion
@@ -254,7 +282,7 @@ class EKF:
         odom = Odometry()
         odom.header.stamp = timestamp
         odom.header.frame_id = FRAME_MAP
-        odom.child_frame_id = FRAME_PREDICTED_BASE
+        odom.child_frame_id = FRAME_OPTIMIZE
 
 
         odom.pose.pose.position.x = self.x_map_op[0]

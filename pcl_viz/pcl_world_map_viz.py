@@ -14,7 +14,7 @@ fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 
 # Plot the point clouds with different colors and labels
-ax.scatter(x_source, y_source, z_source, c='r', label='Source', s=2)
+ax.scatter(x_source, y_source, z_source, c='r', label='world map', s=2)
 
 
 # Set the labels for the axes

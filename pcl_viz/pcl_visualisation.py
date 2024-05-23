@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
 # Load the PCD files using pypcd4
-pc_source = PointCloud.from_path('source.pcd')
-pc_aligned = PointCloud.from_path('aligned.pcd')
-pc_target = PointCloud.from_path('target.pcd')
+pc_source = PointCloud.from_path('1source.pcd')
+pc_aligned = PointCloud.from_path('1aligned.pcd')
+pc_target = PointCloud.from_path('0target.pcd')
 
 # Convert the point cloud data to a NumPy array
 points_source = pc_source.numpy(("x", "y", "z"))
@@ -23,9 +23,9 @@ fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
 
 # Plot the point clouds with different colors and labels
-ax.scatter(x_source, y_source, z_source, c='r', label='Source')
-ax.scatter(x_aligned, y_aligned, z_aligned, c='g', label='Aligned')
-ax.scatter(x_target, y_target, z_target, c='b', label='Target')
+ax.scatter(x_source, y_source, z_source, c='r', label='Source', s=2)
+ax.scatter(x_aligned, y_aligned, z_aligned, c='g', label='Aligned', s=2)
+ax.scatter(x_target, y_target, z_target, c='b', label='Target', s=2)
 
 # Set the labels for the axes
 ax.set_xlabel('X')

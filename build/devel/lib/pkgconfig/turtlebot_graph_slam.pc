@@ -1,8 +1,0 @@
-prefix=/home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/build/devel
-
-Name: turtlebot_graph_slam
-Description: Description of turtlebot_graph_slam
-Version: 0.0.0
-Cflags: -I/home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/build/devel/include -I/home/patweatharva/ros_work/turtlebot_class/src/turtlebot_graph_slam/include
-Libs: -L${prefix}/lib -lturtlebot_graph_slam
-Requires: roscpp std_msgs sensor_msgs pcl_ros message_runtime

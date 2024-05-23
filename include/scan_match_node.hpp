@@ -317,7 +317,7 @@ private:
 
         double yaw = tf::getYaw(q);
 
-        if (fabs(yaw) > M_PI / 20 || fabs(current_odom_.pose.pose.position.x) >= 0.5 || fabs(current_odom_.pose.pose.position.y) >= 0.5)
+        if (fabs(yaw) > M_PI / 6 || fabs(current_odom_.pose.pose.position.x) >= 0.5 || fabs(current_odom_.pose.pose.position.y) >= 0.5)
         {
             odom_trigger_ = true;
         }
