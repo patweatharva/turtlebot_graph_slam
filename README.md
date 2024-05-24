@@ -179,6 +179,15 @@ The turtlebot_graph_slam package provides the following launch files:
 <img src="result_plots/Untitled%20design.jpg" alt="Factor Graph" width="300"/><img src="result_plots/test_real_rviz_2.png" alt="Factor Graph" width="300"/>
 </div>
 
+The testing video can be found on [Youtube](https://youtu.be/LJ4F1GPrkgc?si=MMji7D_SDVsXrU04)
+
+## Future Work
+1. Tuning the parameters for better performance.
+2. Tuning the uncertainty values for better results.
+3. Filter to add only the necessary keyframes to the graph.
+4. Adding a fixed lag smoother for continuous pose estimation.
+5. Post Processing the obtained world point cloud and occupancy grid.
+
 
 ### Lastly
 
