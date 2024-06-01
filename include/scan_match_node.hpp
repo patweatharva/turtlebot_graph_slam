@@ -5,6 +5,7 @@
 
 // for ICP Covariance, contains Eigen Includes and PCL includes
 #include "icp_cov_estimation.h"
+#include "cbshot.h"
 
 // ROS includes
 #include "ros/ros.h"
@@ -108,10 +109,13 @@ class ScanHandler
 {
 public:
     ros::NodeHandle &nh_;
+    // ros::Publisher pointcloud_pub_map_ = this->nh_.advertise<sensor_msgs::PointCloud2>("/pc_map", 10);
     ros::Publisher pointcloud_pub_ = this->nh_.advertise<sensor_msgs::PointCloud2>("/pc", 10);
-    ros::Publisher pointcloud_pub_map_ = this->nh_.advertise<sensor_msgs::PointCloud2>("/pc_map", 10);
-    ros::Publisher keyframe_pub_ = this->nh_.advertise<geometry_msgs::PoseArray>("/keyframes", 10);
+    ros::Publisher pointcloud_pub_scan_nav_ = this->nh_.advertise<sensor_msgs::PointCloud2>("/pc_scan_nav", 10);
+
     ros::Publisher scan_match_pub_ = this->nh_.advertise<turtlebot_graph_slam::tfArray>("/scanmatches", 10);
+    
+    ros::Publisher keyframe_pub_ = this->nh_.advertise<geometry_msgs::PoseArray>("/keyframes", 10);
     ros::Publisher ellipse_pub_ = this->nh_.advertise<visualization_msgs::MarkerArray>("ellipse_markers", 1000);
 
     // Laser Geometry Projection for converting scan to PointCloud
@@ -126,9 +130,8 @@ public:
     // Subsciber for optimized poses from graph SLAM
     ros::Subscriber op_keyframe_sub_;
 
+    // Subsciber for optimized poses from LiDAR
     ros::Subscriber laser_sub_;
-
-    // tf::TransformBroadcaster keyframe_br_;
 
     double thresholdTime_;
     double thresholdOdometry_;
@@ -139,6 +142,8 @@ public:
     bool time_trigger_ = false;
 
     bool saveWorldMap_ = false;
+
+    bool cloud_init_ = false;
 
     ros::Time lastScanTime_;
     nav_msgs::Odometry last_scan_odom_;
@@ -155,7 +160,7 @@ public:
 
     ScanHandler(ros::NodeHandle &nh, double thresholdTime, double thresholdOdometry) : nh_(nh), thresholdTime_(thresholdTime), thresholdOdometry_(thresholdOdometry), client_(nh.serviceClient<turtlebot_graph_slam::ResetFilter>("ResetFilter")), client_octomap_(nh.serviceClient<std_srvs::Empty>("/octomap_server/reset"))
     {
-        laser_sub_ = nh.subscribe("/turtlebot/kobuki/sensors/rplidar",10, &ScanHandler::scanCallback, this);
+        laser_sub_ = nh.subscribe("/turtlebot/kobuki/sensors/rplidar", 10, &ScanHandler::scanCallback, this);
 
         // Initialize subscribers
         odom_sub_ = nh.subscribe("/odom", 10, &ScanHandler::odometryCallback, this);
@@ -171,8 +176,6 @@ public:
         // laser_notifier_.registerCallback(boost::bind(&ScanHandler::scanCallback, this, _1));
         // laser_notifier_.setTolerance(ros::Duration(0.01));
         // lastScanTime_ = ros::Time::now();
-
-
     };
 
     void storePointCloudandKeyframe(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const geometry_msgs::TransformStamped &keyframe)
@@ -196,12 +199,28 @@ private:
     std::vector<int> hypothesisIDs_;
     pcl::PointCloud<pcl::PointXYZ> world_map_;
     std::vector<Eigen::Matrix4f> keyframes_;
+    std::vector<Eigen::Matrix4f> keyframes_scan_navigator_;
     std::vector<geometry_msgs::TransformStamped> Transformations_vector_;
     std::vector<std::vector<double>> covariances_;
 
     // Scan Callback method
     void scanCallback(const sensor_msgs::LaserScan::ConstPtr &scan)
     {
+        if (!cloud_init_)
+        {
+            try
+            {
+                sensor_msgs::PointCloud2 cloud_init;
+                projector_.transformLaserScanToPointCloud("turtlebot/kobuki/base_footprint", *scan, cloud_init, listener_);
+                pointcloud_pub_.publish(cloud_init);
+            }
+            catch (tf::TransformException &e)
+            {
+                ROS_ERROR("Transform error: %s", e.what());
+                return;
+            };
+        }
+
         if (time_trigger_ && odom_trigger_)
         {
             sensor_msgs::PointCloud2 cloud_in;
@@ -220,7 +239,7 @@ private:
                 current_scan_odom_.header.frame_id = std::to_string(current_scan_index);
                 current_scan_odom_.child_frame_id = std::to_string(current_scan_index + 1);
 
-                ROS_ERROR_STREAM("SCAN TIME DIFFERENCE"<<  (current_scan_odom_.header.stamp - scan->header.stamp).toSec());
+                ROS_ERROR_STREAM("SCAN TIME DIFFERENCE" << (current_scan_odom_.header.stamp - scan->header.stamp).toSec());
                 // ROS_ERROR_STREAM("SCAN Heading DIFFERENCE"<<  (current_scan_odom_.pose.pose.orientation. - scan->header.stamp).toSec());
 
                 odomtoTF(current_scan_odom_, current_key_frame);
@@ -254,10 +273,13 @@ private:
                 current_scan_index++;
                 ROS_INFO("---Pointcloud (ID - %d) Received and Stored---", current_scan_index);
 
-
                 if (current_scan_index > 0)
                 {
                     Eigen::Matrix4f TMaptoCurrent = keyframes_.back() * current_tf;
+                    Eigen::Matrix4f TMaptoCurrent_scan_nav = keyframes_scan_navigator_.back() * current_tf;
+
+                    publishScanNavigatorPC(planarPointcloud,TMaptoCurrent_scan_nav);
+
                     // Hypothesis generation and matching
                     pclMatchHypothesis(TMaptoCurrent);
                     Transformations_vector_ = pointCloudMatching(planarPointcloud);
@@ -305,6 +327,24 @@ private:
         };
     };
 
+    void publishScanNavigatorPC(const pcl::PointCloud<pcl::PointXYZ>::Ptr &scan, const Eigen::Matrix4f &TMaptoCurrent)
+    {
+        pcl::PointCloud<pcl::PointXYZ>::Ptr transformed_cloud_world_scan_navigator(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::transformPointCloud(*scan, *transformed_cloud_world_scan_navigator, TMaptoCurrent);
+
+        cloud_init_ = true;
+        sensor_msgs::PointCloud2 scan_navigator_lidar;
+
+        pcl::toROSMsg(*transformed_cloud_world_scan_navigator, scan_navigator_lidar);
+
+        scan_navigator_lidar.header.frame_id = "map";
+        scan_navigator_lidar.header.stamp = ros::Time::now();
+
+        // Publish the point cloud
+        pointcloud_pub_scan_nav_.publish(scan_navigator_lidar);
+
+    }
+
     // Odometry Callback
     void odometryCallback(const nav_msgs::Odometry::ConstPtr &odom)
     {
@@ -317,7 +357,7 @@ private:
 
         double yaw = tf::getYaw(q);
 
-        if (fabs(yaw) > M_PI / 6 || fabs(current_odom_.pose.pose.position.x) >= (thresholdOdometry_/2) || fabs(current_odom_.pose.pose.position.y) >= (thresholdOdometry_/2))
+        if (fabs(yaw) > M_PI / 6 || fabs(current_odom_.pose.pose.position.x) >= (thresholdOdometry_ / 2) || fabs(current_odom_.pose.pose.position.y) >= (thresholdOdometry_ / 2))
         {
             odom_trigger_ = true;
         }
@@ -575,9 +615,9 @@ private:
         // Get the path to the current ROS package
         std::string packagePath = ros::package::getPath("turtlebot_graph_slam");
         std::string directory = "/pcl_viz/";
-        pcl::io::savePCDFileASCII(packagePath + directory + source_id + "-"+ target_id + "source.pcd", *source);
-        pcl::io::savePCDFileASCII(packagePath + directory + source_id + "-"+ target_id + "target.pcd", *target);
-        pcl::io::savePCDFileASCII(packagePath + directory + source_id + "-"+ target_id + "aligned.pcd", *aligned);
+        pcl::io::savePCDFileASCII(packagePath + directory + source_id + "-" + target_id + "source.pcd", *source);
+        pcl::io::savePCDFileASCII(packagePath + directory + source_id + "-" + target_id + "target.pcd", *target);
+        pcl::io::savePCDFileASCII(packagePath + directory + source_id + "-" + target_id + "aligned.pcd", *aligned);
     };
 
     void registerPointcloudinWorld(const pcl::PointCloud<pcl::PointXYZ>::Ptr &currentScan)
@@ -591,6 +631,7 @@ private:
         Twtokplus1 = Twtok * Tktokplus1;
 
         keyframes_.push_back(Twtokplus1);
+        keyframes_scan_navigator_.push_back(Twtokplus1);
 
         // std::cout << "T w to k+1 for scan ID " << current_scan_index << ":\n"
         //           << Twtokplus1 << std::endl;
@@ -623,6 +664,7 @@ private:
 
     void publishWorldPointcloud()
     {
+        // cloud_init_ = true;
         sensor_msgs::PointCloud2 world_cloud_out;
 
         pcl::toROSMsg(world_map_, world_cloud_out);

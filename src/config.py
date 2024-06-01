@@ -1,5 +1,5 @@
 # Params
-MODE              = "SIL" # "SIL" or "HIL"
+MODE              = "HIL" # "SIL" or "HIL"
 FRAME_MAP         = "map"
 FRAME_BASE        = "turtlebot/kobuki/base_footprint"
 FRAME_PREDICTED_BASE = "turtlebot/kobuki/predicted_base_footprint"
@@ -17,7 +17,7 @@ SUB_IMU_TOPIC           = "/turtlebot/kobuki/sensors/imu_data"
 SUB_ODOM_TOPIC          = "/turtlebot/joint_states"
 
 SUB_OPTIMIZED_TOPIC     = "/graphslam/optimizedposes"
-PUB_OPTIMIZED_TOPIC     = "/odom_optimized"
+PUB_OPTIMIZED_TOPIC     = "/state_estimation"
 
 PUB_DEAD_RECKONING_TOPIC= "/dead_reckoning"
 
@@ -26,10 +26,10 @@ SERVICE_RESET_FILTER    = "ResetFilter"
 ROBOT_WHEEL_BASE        = 0.235
 ROBOT_WHEEL_RADIUS      = 0.035
 
-STD_ODOM_X_VELOCITY     = 0.0108          # [m/s]
-STD_ODOM_Y_VELOCITY     = 0.00109         # [m/s]
-STD_ODOM_ROTATE_VELOCITY= 0.107           # [deg/s]
-STD_MAG_HEADING         = 1.08             # [deg]
+STD_ODOM_X_VELOCITY     = 0.2         # [m/s]
+STD_ODOM_Y_VELOCITY     = 0.4         # [m/s]
+STD_ODOM_ROTATE_VELOCITY= 0.307           # [deg/s]
+STD_MAG_HEADING         = 2.0             # [deg]
 
 
 #

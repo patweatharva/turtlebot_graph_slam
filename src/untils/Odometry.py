@@ -17,7 +17,8 @@ class OdomData:
         :param:
         """
         self.newData    = False     # Flag presenting got new synchronized data
-        self.mode       = MODE
+        self.mode       = rospy.get_param("MODE", "SIL") # Simulation mode: HIL or SIL
+        # self.mode       = rospy.get_param("MODE", "HIL") # Simulation mode: HIL or SIL
         
         # Init left and right encoders
         self.rightEncoder   = Encoder('turtlebot/kobuki/wheel_right_joint')

@@ -369,7 +369,7 @@ void graph_slam_handler::scanCB(const turtlebot_graph_slam::tfArrayConstPtr &sca
                 graph_->emplace_shared<gtsam::BetweenFactor<gtsam::Pose2>>(X(index_ - 1), X(index_), odometry, noiseModel::Diagonal::Covariance(odom_cov));
             }
 
-            if (index_ > 1)
+            if (index_ >= 1)
             {
                 solveAndResetGraph();
             }

@@ -37,7 +37,9 @@ class EKF:
 
         self.initial_current_pose = None
 
-        self.mode         = MODE
+        self.mode         = rospy.get_param("MODE", "SIL")
+        # self.mode         = rospy.get_param("MODE", "HIL")
+        rospy.loginfo("Mode: %s", self.mode)
         
         self.odom   = OdomData(Qk)
         self.mag    = Magnetometer(Rk)
@@ -118,6 +120,7 @@ class EKF:
         # Get heading as a measurement to update filter
         if self.mag.read_magnetometer(yaw-self.yawOffset) and self.ekf_filter is not None:
             self.ekf_filter.gotNewHeadingData()
+            # pass
 
     # Odometry callback: Gets encoder reading to compute displacement of the robot as input of the EKF Filter.
     # Run EKF Filter with frequency of odometry reading
@@ -172,8 +175,8 @@ class EKF:
             self.poseArray.header.frame_id = FRAME_MAP
             self.key_frame_pub.publish(self.poseArray)
 
-            if self.mode == "HIL":
-                self.publish_tf_cam(timestamp)
+            # if self.mode == "HIL":
+            #     self.publish_tf_cam(timestamp)
 
     # Reset state and covariance of th EKF filter
     def reset_filter(self, request):
@@ -334,7 +337,7 @@ class EKF:
     
     
     def publish_tf_map(self, timestamp):
-        x_map = self.x_map.copy()
+        x_map = self.x_map_op.copy()
 
         # Define the translation and rotation for the inverse TF (base_footprint to world)
         translation = (x_map[0], x_map[1], 0) # Set the x, y, z coordinates
